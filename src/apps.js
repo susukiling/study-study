@@ -37,7 +37,7 @@ export const APPS = [
     name: 'AIなんでも単語帳',
     short: 'AI単語帳',
     full: 'AIなんでも単語帳',
-    tab: '✦',
+    tab: 'AI',
     color: '#1B9AAA',
     desc: '好きな内容からAIが問題を作る',
     route: '#/anything',
