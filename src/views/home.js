@@ -56,18 +56,20 @@ export function mount(root, ctx) {
       <div class="stamp-head"><div class="streak"><span class="flame">🔥</span><b id="streak">–</b><span>日れんぞく！</span></div></div>
       <div class="stamps" id="stamps">${Array.from({ length: 7 }, () => '<div class="stamp"><i></i><small>–</small></div>').join('')}</div>
     </section>
-    <section class="notes">
-      <div class="note n1"><small>ぜんぶで勉強した時間</small><b id="tt">–</b></div>
-      <div class="note n2"><small>ぜんぶで正解した数</small><b id="tc">–</b></div>
+    <section class="totals">
+      <div><small>勉強した時間</small><b id="tt">–</b></div>
+      <div><small>正解した問題</small><b id="tc">–</b></div>
+      <div><small>きょうの問題</small><b id="td">–</b></div>
     </section>
     <h3 class="sec"><span>きょうは どれにする？</span></h3>
-    ${APPS.map(
+    <div class="apps">${APPS.map(
       (a) => `<article class="appcard theme-${a.id}">
-        <a class="banner-link" href="${a.route}">${banner(a.id, true)}</a>
-        <div class="appcard-body"><div><b>${esc(a.full)}</b><p>${esc(a.desc)}</p></div><small>今日 <b id="today-${a.id}">0</b> 問</small></div>
+        <a class="banner-link" href="${a.route}" aria-label="${esc(a.full)}">${banner(a.id, true)}</a>
+        <div class="plank"></div>
+        <div class="appcard-body"><b>${esc(a.full)}</b><small>きょう <b id="today-${a.id}">0</b> 問</small></div>
         <a class="btn" href="${a.route}">問題を解く</a>
       </article>`,
-    ).join('')}
+    ).join('')}</div>
     <h3 class="sec"><span>がんばりグラフ</span></h3>
     <section class="card chartcard">
       <div class="chart-head"><div class="seg sm" id="segMetric"><button data-metric="solved" class="on">問題数</button><button data-metric="time">時間(分)</button></div>
@@ -93,6 +95,7 @@ export function mount(root, ctx) {
     root.querySelector('#tt').textContent = fmtDuration(s.seconds);
     root.querySelector('#tc').textContent = `${s.correct}問`;
     APPS.forEach((a) => (root.querySelector('#today-' + a.id).textContent = s.today.solved[a.id] || 0));
+    root.querySelector('#td').textContent = `${Object.values(s.today.solved).reduce((x, y) => x + y, 0)}問`;
     root.querySelector('#stamps').innerHTML = s.days
       .slice(-7)
       .map((d, i, a) => {
