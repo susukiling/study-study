@@ -1,6 +1,6 @@
 // ターゲット / 語彙 / 字義 共通の「出題設定 → クイズ」画面
 import { esc, shuffle, pick, toast, lsGet, lsSet } from '../dom.js';
-import { banner } from '../ui.js';
+import { banner, ICON } from '../ui.js';
 import { runQuiz } from '../quiz.js';
 import { getWrong } from '../repo.js';
 
@@ -29,7 +29,7 @@ export function createStudyView(cfg) {
   const maxId = Math.max(...data.map((d) => d.id));
   const block = maxId > 300 ? 100 : maxId > 60 ? 20 : 10;
   const allModes = cfg.mix
-    ? [...modes, { id: 'mix', label: 'ミックス', desc: 'すべての形式をランダムに', icon: '🔀', make: (it, pool) => pick(modes, modes.length).map((m) => m.make(it, pool)).find(Boolean) || null }]
+    ? [...modes, { id: 'mix', label: 'ミックス', desc: 'すべての形式をランダムに', icon: ICON.shuffle, make: (it, pool) => pick(modes, modes.length).map((m) => m.make(it, pool)).find(Boolean) || null }]
     : modes;
 
   return {
