@@ -326,3 +326,9 @@ body[data-mode='dark'] .choice .n { color: var(--ink); }
 .round:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); }
 .round.gray { background: var(--soft); color: var(--ink); } .round.main { background: var(--good); color: #fff; } .round.main.stop { background: var(--bad); }
 .laps { margin-top: 24px; } .laps .row { justify-content: space-between; } .mono { font-variant-numeric: tabular-nums; } .dim { color: var(--sub); }
+
+/* 絵文字の代わりのSVGアイコン */
+.row-icon svg { width: 24px; height: 24px; display: block; margin: 0 auto; }
+.stamp-head .flame { display: grid; place-items: center; color: #ef7a2b; }
+.stamp-head .flame svg { width: 30px; height: 30px; }
+.stamp i svg { width: 62%; height: 62%; }
