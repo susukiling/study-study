@@ -32,7 +32,7 @@ export function getModel() {
   if (!hasFirebase) return null;
   ai ||= getAI(app, { backend: new GoogleAIBackend() });
   return getGenerativeModel(ai, {
-    model: env.VITE_GEMINI_MODEL || 'gemini-2.5-flash',
+    model: env.VITE_GEMINI_MODEL || 'gemini-3.5-flash-lite',
     generationConfig: { responseMimeType: 'application/json' },
   });
 }
