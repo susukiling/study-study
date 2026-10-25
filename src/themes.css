@@ -163,7 +163,7 @@ body[data-theme='jigi'] #pad { border-radius: 2px; border: 2px solid var(--accen
 body[data-theme='jigi'] .tool { border-radius: 4px; box-shadow: 0 0 0 1px var(--line2); }
 body[data-theme='jigi'] .fb { border-radius: 4px; box-shadow: none; border: 1px solid var(--line2); }
 body[data-theme='jigi'] .fb.ok::before { content: ''; display: block; width: 62px; height: 62px; margin: 0 auto 8px; border-radius: 50%; background: radial-gradient(circle, transparent 0 15px, var(--accent) 15px 19px, transparent 19px 24px, var(--accent) 24px 28px, transparent 28px); animation: hanko .38s cubic-bezier(.2, 1.4, .4, 1) both; }
-body[data-theme='jigi'] .fb.ng::before { content: '✕'; display: block; font-size: 34px; line-height: 1; color: var(--bad); margin-bottom: 4px; }
+body[data-theme='jigi'] .fb.ng::before { content: ''; display: block; width: 34px; height: 34px; margin: 0 auto 4px; background: var(--bad); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 5l14 14M19 5L5 19' stroke='black' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 5l14 14M19 5L5 19' stroke='black' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat; }
 @keyframes hanko { from { transform: scale(1.8) rotate(-18deg); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { body[data-theme='jigi'] .fb.ok::before { animation: none; } }
 body[data-theme='jigi'] .fb.ok > b { color: var(--accent); }
