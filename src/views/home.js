@@ -1,5 +1,5 @@
 import { APPS } from '../apps.js';
-import { banner } from '../ui.js';
+import { banner, ICON } from '../ui.js';
 import { esc, fmtDuration } from '../dom.js';
 import { getSummary } from '../stats.js';
 
@@ -53,7 +53,7 @@ export function mount(root, ctx) {
   root.innerHTML = `<div class="page">
     <div class="hello"><small>${esc(today)}</small><h2>こんにちは${name ? '、' + esc(name) + 'さん' : ''}</h2></div>
     <section class="stamp-card">
-      <div class="stamp-head"><div class="streak"><span class="flame">🔥</span><b id="streak">–</b><span>日れんぞく！</span></div></div>
+      <div class="stamp-head"><div class="streak"><span class="flame">${ICON.flame}</span><b id="streak">–</b><span>日れんぞく！</span></div></div>
       <div class="stamps" id="stamps">${Array.from({ length: 7 }, () => '<div class="stamp"><i></i><small>–</small></div>').join('')}</div>
     </section>
     <section class="totals">
@@ -100,7 +100,7 @@ export function mount(root, ctx) {
       .slice(-7)
       .map((d, i, a) => {
         const on = d.seconds > 0 || Object.values(d.solved).some((v) => v > 0);
-        return `<div class="stamp ${on ? 'on' : ''} ${i === a.length - 1 ? 'today' : ''}"><i>${on ? '✓' : ''}</i><small>${esc(d.label.split('/')[1])}</small></div>`;
+        return `<div class="stamp ${on ? 'on' : ''} ${i === a.length - 1 ? 'today' : ''}"><i>${on ? ICON.check : ''}</i><small>${esc(d.label.split('/')[1])}</small></div>`;
       })
       .join('');
     drawChart();
