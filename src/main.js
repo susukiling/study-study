@@ -1,4 +1,5 @@
 import './styles.css';
+import './themes.css';
 import { initAuth, getUser, onUser, logout } from './auth.js';
 import { APPS, APP_NAME } from './apps.js';
 import { ICON, tabIcon } from './ui.js';
@@ -72,6 +73,7 @@ async function render() {
 
   const r = ROUTES[name];
   document.title = name === 'home' || name === 'login' ? APP_NAME : `${r.title} - ${APP_NAME}`;
+  document.body.dataset.theme = name;
   rootEl.innerHTML = shell(name, r, user);
 
   const shellEl = rootEl.querySelector('.shell');
