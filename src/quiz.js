@@ -3,6 +3,7 @@ import { ICON } from './ui.js';
 import * as stats from './stats.js';
 import { getWrong, setWrong } from './repo.js';
 import { gradeKanji } from './ai.js';
+import { playCorrect, playWrong, playFinish } from './sound.js';
 
 export function speak(text, lang = 'en-US') {
   try {
@@ -56,6 +57,8 @@ export function runQuiz(root, opts) {
     }
   }
 
+  const sfx = (ok) => (ok ? playCorrect() : playWrong());
+
   function finalize(ok, given) {
     if (cur.done) return;
     cur.done = true;
@@ -92,6 +95,7 @@ export function runQuiz(root, opts) {
       else if (n === i) b.classList.add('wrong');
     });
     finalize(ok, q.choices[i]);
+    sfx(ok);
     showFeedback(ok);
   }
 
@@ -105,6 +109,7 @@ export function runQuiz(root, opts) {
     input.disabled = true;
     root.querySelector('#typeActions').hidden = true;
     finalize(ok, given);
+    sfx(ok);
     showFeedback(ok, ok ? '' : `<div class="answer-line">正解: <b>${esc(cur.q.answer)}</b>${given ? `<span class="mine">あなた: ${esc(given)}</span>` : ''}</div>`);
   }
 
@@ -203,6 +208,7 @@ export function runQuiz(root, opts) {
       cur.note = r.comment;
       root.querySelector('#writeActions').hidden = true;
       writeFeedback(r.comment, true);
+      sfx(r.correct);
     } catch (e) {
       if (disposed) return;
       console.warn(e);
@@ -269,6 +275,7 @@ export function runQuiz(root, opts) {
         cur.pendingOk = t.dataset.a === 'selfok';
         cur.score = null;
         writeFeedback('', false);
+        sfx(cur.pendingOk);
         break;
     }
   };
@@ -283,6 +290,7 @@ export function runQuiz(root, opts) {
     const right = results.filter((r) => r.ok).length;
     const pct = total ? Math.round((right / total) * 100) : 0;
     const wrong = results.filter((r) => !r.ok);
+    playFinish(pct);
     const msg = pct === 100 ? '全問正解！すばらしい！' : pct >= 80 ? 'よくできました！' : pct >= 50 ? 'あと少し。復習しよう' : 'ここから伸ばそう！';
     root.innerHTML = `<div class="result">
       <div class="score-ring" style="--p:${pct}"><div><b>${right}</b><span>/ ${total}</span></div></div>
