@@ -5,6 +5,8 @@ import { APPS, APP_NAME } from './apps.js';
 import { ICON, tabIcon } from './ui.js';
 import { esc } from './dom.js';
 import { setStatsUser, flush } from './stats.js';
+import { applyMode, setMode, getMode, getSound, setSound, syncThemeColor } from './settings.js';
+import { unlockAudio } from './sound.js';
 import * as home from './views/home.js';
 import * as login from './views/login.js';
 import * as target from './views/target.js';
@@ -26,6 +28,10 @@ const ROUTES = {
 const rootEl = document.getElementById('app');
 let cleanup = null;
 
+applyMode();
+// 最初のタップで効果音を使えるようにする（iPad/iPhone対策）
+document.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
+
 function tabbar(active) {
   return `<nav class="tabbar" aria-label="アプリ切り替え">
     <a href="#/" class="tab theme-home"><span class="ti">${ICON.home}</span><span class="tl">ホーム</span></a>
@@ -35,16 +41,23 @@ function tabbar(active) {
 
 function drawer(user, active) {
   const initial = (user.name || user.email || '?').trim().charAt(0).toUpperCase();
+  const m = getMode();
   return `<div class="scrim" data-act="close"></div>
   <aside class="drawer" aria-label="メニュー">
     <div class="drawer-user"><span class="avatar">${esc(initial)}</span><div><b>${esc(user.name || '')}</b><small>${esc(user.email || '')}</small></div></div>
     <nav class="drawer-list">
-      <a href="#/" class="${active === 'home' ? 'on' : ''}"><span class="dot" style="background:#007AFF"></span>ホーム</a>
+      <a href="#/" class="${active === 'home' ? 'on' : ''}"><span class="dot" style="background:#3d6fd8"></span>ホーム</a>
       <div class="drawer-label">学習アプリ</div>
       ${APPS.map((a) => `<a href="${a.route}" class="${a.id === active ? 'on' : ''}"><span class="dot" style="background:${a.color}"></span>${esc(a.full)}</a>`).join('')}
       <div class="drawer-label">ツール</div>
-      <a href="#/timer" class="${active === 'timer' ? 'on' : ''}"><span class="dot" style="background:#5E5CE6"></span>タイマー・ストップウォッチ</a>
+      <a href="#/timer" class="${active === 'timer' ? 'on' : ''}"><span class="dot" style="background:#6a67f0"></span>タイマー・ストップウォッチ</a>
     </nav>
+    <div class="drawer-settings">
+      <div class="set-row"><span>表示</span><div class="seg sm" id="segMode">
+        ${[['auto', '自動'], ['light', 'ライト'], ['dark', 'ダーク']].map(([k, l]) => `<button data-mode="${k}" class="${m === k ? 'on' : ''}">${l}</button>`).join('')}
+      </div></div>
+      <div class="set-row"><span>効果音</span><label class="switch"><input type="checkbox" id="soundToggle" ${getSound() ? 'checked' : ''} aria-label="効果音"><i></i></label></div>
+    </div>
     <div class="drawer-foot">
       <button data-act="switch">アカウントを切り替える</button>
       <button data-act="logout" class="danger-text">ログアウト</button>
@@ -75,12 +88,18 @@ async function render() {
   document.title = name === 'home' || name === 'login' ? APP_NAME : `${r.title} - ${APP_NAME}`;
   document.body.dataset.theme = name;
   rootEl.innerHTML = shell(name, r, user);
+  syncThemeColor();
 
   const shellEl = rootEl.querySelector('.shell');
   shellEl.addEventListener('click', async (e) => {
-    const t = e.target.closest('[data-act],.drawer a');
+    const t = e.target.closest('[data-act],[data-mode],.drawer a');
     if (!t) return;
-    if (t.matches('.drawer a')) return shellEl.classList.remove('open'); // 遷移はhashchangeで
+    if (t.dataset.mode) {
+      setMode(t.dataset.mode);
+      shellEl.querySelectorAll('#segMode button').forEach((b) => b.classList.toggle('on', b === t));
+      return;
+    }
+    if (t.matches('.drawer a')) return shellEl.classList.remove('open');
     const act = t.dataset.act;
     if (act === 'menu') shellEl.classList.add('open');
     else if (act === 'close') shellEl.classList.remove('open');
@@ -88,6 +107,9 @@ async function render() {
       await flush();
       await logout();
     }
+  });
+  shellEl.addEventListener('change', (e) => {
+    if (e.target.id === 'soundToggle') setSound(e.target.checked);
   });
 
   const ctx = {
