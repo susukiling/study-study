@@ -1,3 +1,4 @@
+import { ICON } from '../ui.js';
 import { GOI } from '../data/goi.js';
 import { createStudyView, choiceQ, bracket, blanked, plain } from './study.js';
 import { shuffle, pick } from '../dom.js';
@@ -7,7 +8,7 @@ const modes = [
     id: 'meaning',
     label: '意味を選ぶ',
     desc: '語を見て、正しい意味を4つから選ぶ',
-    icon: '📖',
+    icon: ICON.book,
     make: (it, pool) =>
       choiceQ(it, pool, (x) => x.meaning, { label: '意味を選ぶ', prompt: it.word, reveal: `${it.word}：${it.meaning}` }),
   },
@@ -15,7 +16,7 @@ const modes = [
     id: 'cloze',
     label: '例文の穴埋め（4択）',
     desc: '例文の空所に入る語を4つから選ぶ',
-    icon: '📝',
+    icon: ICON.note,
     make: (it, pool) => {
       const m = bracket(it.ex);
       if (!m) return null;
