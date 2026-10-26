@@ -205,3 +205,16 @@ body[data-theme='anything'] .tab.active { background: rgba(27, 154, 170, .16); }
 body[data-theme='anything'] .tab.active .ti { background: linear-gradient(135deg, #1b9aaa, #5b7cfa); transform: none; }
 body[data-theme='anything'] .seg { background: var(--soft); }
 body[data-theme='anything'] .score-ring::before { background: transparent; }
+
+/* ========== 考査ノート：方眼の答案用紙と赤ペン ========== */
+body[data-theme='exam'] { --c: #2e9e6b; }
+body[data-theme='exam'] .nav h1 { letter-spacing: .06em; }
+body[data-theme='exam'] .nav { border-bottom: 3px solid #2e9e6b; }
+body[data-theme='exam'] .card, body[data-theme='exam'] .group { border-radius: 14px; }
+body[data-theme='exam'] .primary, body[data-theme='exam'] .btn { background: linear-gradient(135deg, #2e9e6b, #23805a); box-shadow: 0 4px 0 #1a6347; border-radius: 14px; }
+body[data-theme='exam'] .primary:active { box-shadow: 0 1px 0 #1a6347; }
+body[data-theme='exam'] .exam-card { border-left: 6px solid var(--c); }
+body[data-theme='exam'] .exam-seg button.on { color: #2e9e6b; }
+body[data-theme='exam']:not([data-mode='dark']) { background-image: linear-gradient(rgba(46, 158, 107, .09) 1px, transparent 1px), linear-gradient(90deg, rgba(46, 158, 107, .09) 1px, transparent 1px); background-size: 24px 24px; }
+body[data-theme='exam'][data-mode='dark'] { background-image: linear-gradient(rgba(70, 200, 140, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(70, 200, 140, .07) 1px, transparent 1px); background-size: 24px 24px; }
+body[data-theme='exam'] .tab.active .ti { background: #2e9e6b; }
