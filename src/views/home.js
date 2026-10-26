@@ -1,7 +1,8 @@
 import { APPS } from '../apps.js';
 import { banner, ICON } from '../ui.js';
-import { esc, fmtDuration } from '../dom.js';
+import { esc, fmtDuration, todayKey } from '../dom.js';
 import { getSummary } from '../stats.js';
+import { listItems } from '../repo.js';
 
 const TIME_COLOR = '#5E5CE6';
 
@@ -70,6 +71,7 @@ export function mount(root, ctx) {
         <a class="btn" href="${a.route}">問題を解く</a>
       </article>`,
     ).join('')}</div>
+    <a class="exam-entry theme-exam" href="#/exam">${banner('exam', true)}<div class="ee-body"><b>考査ノート</b><small id="nextExam">試験の予定を登録しよう</small><span class="btn">ひらく</span></div></a>
     <h3 class="sec"><span>がんばりグラフ</span></h3>
     <section class="card chartcard">
       <div class="chart-head"><div class="seg sm" id="segMetric"><button data-metric="solved" class="on">問題数</button><button data-metric="time">時間(分)</button></div>
@@ -87,6 +89,17 @@ export function mount(root, ctx) {
         ? `<span><i style="background:${TIME_COLOR}"></i>学習時間</span>`
         : APPS.map((a) => `<span><i style="background:${a.color}"></i>${esc(a.name)}</span>`).join('');
   }
+
+  listItems(ctx.user.uid, 'exams')
+    .then((list) => {
+      const today = todayKey();
+      const next = list.filter((e) => e.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1))[0];
+      const el = alive && root.querySelector('#nextExam');
+      if (!el || !next) return;
+      const d = Math.round((new Date(next.date + 'T00:00') - new Date(today + 'T00:00')) / 864e5);
+      el.innerHTML = `次は ${esc(next.title)}<br><strong>${d === 0 ? '今日' : 'あと' + d + '日'}</strong>`;
+    })
+    .catch(() => {});
 
   getSummary().then((s) => {
     if (!alive) return;
