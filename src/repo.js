@@ -77,3 +77,32 @@ export async function deleteDeck(uid, id) {
   }
   await deleteDoc(doc(db, 'users', uid, 'decks', id));
 }
+
+/* ---- 考査ノート（exams / tasks / plans）: 汎用の保存 ---- */
+export async function listItems(uid, col) {
+  if (!hasFirebase) return lsGet(`${uid}:${col}`, []);
+  const snap = await getDocs(collection(db, 'users', uid, col));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+export async function saveItem(uid, col, item) {
+  const id = item.id || 'i' + Date.now() + Math.random().toString(36).slice(2, 6);
+  const data = JSON.parse(JSON.stringify({ ...item, id: undefined }));
+  if (!hasFirebase) {
+    const all = lsGet(`${uid}:${col}`, []);
+    const i = all.findIndex((x) => x.id === id);
+    const rec = { id, ...data };
+    if (i >= 0) all[i] = rec;
+    else all.push(rec);
+    lsSet(`${uid}:${col}`, all);
+    return id;
+  }
+  await setDoc(doc(db, 'users', uid, col, id), data);
+  return id;
+}
+export async function deleteItem(uid, col, id) {
+  if (!hasFirebase) {
+    lsSet(`${uid}:${col}`, lsGet(`${uid}:${col}`, []).filter((x) => x.id !== id));
+    return;
+  }
+  await deleteDoc(doc(db, 'users', uid, col, id));
+}
