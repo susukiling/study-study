@@ -22,6 +22,7 @@ export const ICON = {
   check: svg('<path d="M5 12.500l4.500 4.500L19 7.500" stroke-width="3"/>'),
   en: svg('<path d="M4 18 9 6l5 12M5.800 14h6.400"/><path d="M17 8h4M19 6v2c0 3-1.500 5-3.500 6M17.500 11c.5 1.500 1.700 2.700 3.500 3.500"/>'),
   ja: svg('<path d="M6 7h12M12 4v3M8 7c0 5-1 8-3 10M16 7c0 5 1 8 3 10M9.500 12h5"/>'),
+  exam: svg('<rect x="5" y="3.500" width="14" height="17.500" rx="2"/><path d="M9 3V2h6v1M8.500 12.500l2.200 2.200 4.300-4.500"/>'),
   chevron: svg('<path d="M9 6l6 6-6 6"/>', 'width="16" height="16"'),
 };
 
@@ -43,9 +44,11 @@ export function banner(app, small = false) {
     }
     case 'jigi':
       return `<div class="${cls}"><div class="b-text"><small>カテゴリー別</small><strong>字義で覚える<br>常用漢字</strong></div><div class="blocks"><i style="background:#E8A468"></i><i style="background:#E6C94F"></i><i style="background:#E24B52"></i><i style="background:#3B9BDB"></i><i style="background:#7A4BA6"></i><i style="background:#4FA463"></i></div></div>`;
+    case 'exam':
+      return `<div class="${cls}"><div class="b-text"><small>点数・範囲・課題・振り返り</small><strong>考査ノート</strong></div><span class="mark"><b>100</b></span></div>`;
     default:
       return `<div class="${cls}"><div class="b-text"><small>好きな内容から問題を作る</small><strong>AIなんでも<br>単語帳</strong></div><span class="spark">${ICON.sparkle}</span></div>`;
   }
 }
 
-export const tabIcon = (a) => `<span class="ti">${a.id === 'anything' ? ICON.sparkle : esc(a.tab)}</span>`;
+export const tabIcon = (a) => `<span class="ti">${a.id === 'anything' ? ICON.sparkle : a.id === 'exam' ? ICON.exam : esc(a.tab)}</span>`;
