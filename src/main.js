@@ -1,7 +1,7 @@
 import './styles.css';
 import './themes.css';
 import { initAuth, getUser, onUser, logout } from './auth.js';
-import { APPS, APP_NAME } from './apps.js';
+import { APPS, ALL_APPS, APP_NAME } from './apps.js';
 import { ICON, tabIcon } from './ui.js';
 import { esc } from './dom.js';
 import { setStatsUser, flush } from './stats.js';
@@ -13,6 +13,7 @@ import * as target from './views/target.js';
 import * as goi from './views/goi.js';
 import * as jigi from './views/jigi.js';
 import * as anything from './views/anything.js';
+import * as exam from './views/exam.js';
 import * as timer from './views/timer.js';
 
 const ROUTES = {
@@ -22,6 +23,7 @@ const ROUTES = {
   goi: { title: '語彙1560', view: goi, bar: true },
   jigi: { title: '字義で覚える常用漢字', view: jigi, bar: true },
   anything: { title: 'AIなんでも単語帳', view: anything, bar: true },
+  exam: { title: '考査ノート', view: exam, bar: true },
   timer: { title: 'タイマー・ストップウォッチ', view: timer, bar: true },
 };
 
@@ -35,7 +37,7 @@ document.addEventListener('pointerdown', unlockAudio, { once: true, passive: tru
 function tabbar(active) {
   return `<nav class="tabbar" aria-label="アプリ切り替え">
     <a href="#/" class="tab theme-home"><span class="ti">${ICON.home}</span><span class="tl">ホーム</span></a>
-    ${APPS.map((a) => `<a href="${a.route}" class="tab theme-${a.id} ${a.id === active ? 'active' : ''}">${tabIcon(a)}<span class="tl">${esc(a.short)}</span></a>`).join('')}
+    ${ALL_APPS.map((a) => `<a href="${a.route}" class="tab theme-${a.id} ${a.id === active ? 'active' : ''}">${tabIcon(a)}<span class="tl">${esc(a.short)}</span></a>`).join('')}
   </nav>`;
 }
 
@@ -48,7 +50,7 @@ function drawer(user, active) {
     <nav class="drawer-list">
       <a href="#/" class="${active === 'home' ? 'on' : ''}"><span class="dot" style="background:#3d6fd8"></span>ホーム</a>
       <div class="drawer-label">学習アプリ</div>
-      ${APPS.map((a) => `<a href="${a.route}" class="${a.id === active ? 'on' : ''}"><span class="dot" style="background:${a.color}"></span>${esc(a.full)}</a>`).join('')}
+      ${ALL_APPS.map((a) => `<a href="${a.route}" class="${a.id === active ? 'on' : ''}"><span class="dot" style="background:${a.color}"></span>${esc(a.full)}</a>`).join('')}
       <div class="drawer-label">ツール</div>
       <a href="#/timer" class="${active === 'timer' ? 'on' : ''}"><span class="dot" style="background:#6a67f0"></span>タイマー・ストップウォッチ</a>
     </nav>
@@ -66,7 +68,7 @@ function drawer(user, active) {
 }
 
 function shell(name, r, user) {
-  const theme = APPS.some((a) => a.id === name) ? name : 'home';
+  const theme = ALL_APPS.some((a) => a.id === name) ? name : 'home';
   return `<div class="shell theme-${theme}">
     ${r.nav === false ? '' : `<header class="nav"><button class="icon-btn" data-act="menu" aria-label="メニューを開く">${ICON.menu}</button><h1>${esc(r.title)}</h1><span class="nav-right" id="navRight"></span></header>`}
     <main id="view" class="${r.bar ? 'has-bar' : ''}"></main>
