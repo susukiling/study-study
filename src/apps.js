@@ -44,4 +44,17 @@ export const APPS = [
   },
 ];
 
+// 考査ノートは「問題を解くアプリ」ではないので、学習記録(APPS)とは別に持つ
+export const EXAM = {
+  id: 'exam',
+  name: '考査ノート',
+  short: '考査',
+  full: '考査ノート',
+  tab: '考',
+  color: '#2E9E6B',
+  desc: '点数・試験範囲・課題の計画・振り返り',
+  route: '#/exam',
+};
+export const ALL_APPS = [...APPS, EXAM];
+
 export const appById = (id) => APPS.find((a) => a.id === id);
