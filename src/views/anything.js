@@ -3,6 +3,7 @@ import { banner, ICON } from '../ui.js';
 import { runQuiz } from '../quiz.js';
 import { listDecks, saveDeck, deleteDeck } from '../repo.js';
 import { generateDeck, aiAvailable } from '../ai.js';
+import { ACCEPT, readAll, fileChips } from '../files.js';
 
 export function mount(root, ctx) {
   const uid = ctx.user.uid;
@@ -11,9 +12,11 @@ export function mount(root, ctx) {
   let draft = null;
   let alive = true;
   const form = { topic: '', note: '', count: 10 };
+  let files = [];
 
   const bind = () => {
     root.onclick = onClick;
+    root.onchange = onChange;
   };
   const dateStr = (t) => new Date(t).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
 
@@ -48,7 +51,11 @@ export function mount(root, ctx) {
       <h2 class="large">新しい単語帳</h2>
       ${error ? `<p class="error">${esc(error)}</p>` : ''}
       <div class="group-title">素材・テーマ</div>
-      <textarea id="topic" rows="6" placeholder="例）&#10;・英検2級の頻出単語&#10;・光合成に出てくる用語&#10;・授業のノートや単語リストをそのまま貼り付け">${esc(form.topic)}</textarea>
+      <textarea id="topic" rows="6" placeholder="（ファイルだけでもOK）&#10;例）&#10;・英検2級の頻出単語&#10;・光合成に出てくる用語&#10;・授業のノートや単語リストをそのまま貼り付け">${esc(form.topic)}</textarea>
+      <div class="group-title">ファイルを添付（PDF・写真・txt・Word・CSV）</div>
+      <div class="card attach"><label class="filebtn">${ICON.plus}<span>ファイルを選ぶ／写真をとる</span><input type="file" id="files" accept="${ACCEPT}" multiple hidden></label>
+        <div class="fchips" id="fchips">${fileChips(files)}</div>
+        <p class="footnote">教科書のPDFやノートの写真、授業のプリントをそのまま渡せます（1つ12MBまで）</p></div>
       <div class="group-title">追加の指示（任意）</div>
       <input class="text" id="note" placeholder="例）意味を選ぶ形式で / 例文の穴埋めで / 難しめに" value="${esc(form.note)}" />
       <div class="group"><label class="row field"><span>問題数</span><select id="count">${[5, 10, 15, 20, 30].map((n) => `<option ${n === form.count ? 'selected' : ''} value="${n}">${n}問</option>`).join('')}</select></label></div>
@@ -59,10 +66,11 @@ export function mount(root, ctx) {
     form.topic = root.querySelector('#topic').value.trim();
     form.note = root.querySelector('#note').value.trim();
     form.count = Number(root.querySelector('#count').value);
-    if (!form.topic) return toast('素材・テーマを入力してください');
+    if (!form.topic && !files.length) return toast('素材・テーマを入力するか、ファイルを添付してください');
     root.innerHTML = `<div class="page center"><div class="spinner"></div><p>AIが問題を作っています…</p></div>`;
     try {
-      draft = await generateDeck(form);
+      draft = await generateDeck({ ...form, files });
+      files = [];
       if (!alive) return;
       showPreview();
     } catch (e) {
@@ -123,6 +131,19 @@ export function mount(root, ctx) {
     launch(make(items));
   }
 
+  const onChange = async (e) => {
+    if (e.target.id !== 'files') return;
+    form.topic = root.querySelector('#topic')?.value ?? form.topic;
+    try {
+      files = files.concat(await readAll([...e.target.files]));
+    } catch (err) {
+      toast(err.message);
+    }
+    e.target.value = '';
+    const box = root.querySelector('#fchips');
+    if (box) box.innerHTML = fileChips(files);
+  };
+
   const onClick = async (e) => {
     const t = e.target.closest('[data-a],[data-deck]');
     if (!t || root.querySelector('.quiz,.result')) return;
@@ -133,6 +154,10 @@ export function mount(root, ctx) {
         break;
       case 'list':
         showList();
+        break;
+      case 'rmFile':
+        files.splice(Number(t.dataset.i), 1);
+        root.querySelector('#fchips').innerHTML = fileChips(files);
         break;
       case 'form':
         showForm();
@@ -170,5 +195,6 @@ export function mount(root, ctx) {
     alive = false;
     dispose?.();
     root.onclick = null;
+    root.onchange = null;
   };
 }
