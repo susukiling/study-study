@@ -4,7 +4,7 @@ import { listItems, saveItem, deleteItem } from '../repo.js';
 import { ACCEPT, readAll, fileChips } from '../files.js';
 import { extractRange, analyzeScores, analyzeReflection, makePlan } from '../ai.js';
 
-const SUBJECTS = ['国語', '数学', '英語', '理科', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
+const SUBJECTS = ['国語', '数学', '英語', '理科','理科1','理科2', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
 const COLORS = ['#e5584b', '#f09a00', '#2e9e6b', '#3b82f6', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -69,6 +69,7 @@ export function mount(root, ctx) {
   let scoreAI = null;
   let files = [];
   let showTaskForm = false;
+  let selDay = null;
   const mins = lsGet('exam:mins', { wd: 90, hd: 180 });
 
   const byDate = (a, b) => (a.date < b.date ? -1 : 1);
@@ -105,17 +106,44 @@ export function mount(root, ctx) {
     const d = dayDiff(e.date);
     const label = d > 0 ? `あと${d}日` : d === 0 ? '今日' : '終了';
     const t = total(e);
-    return `<button class="card exam-card ${d >= 0 && d <= 7 ? 'soon' : ''}" data-a="${act}" data-id="${esc(e.id)}">
+    return `<button class="card exam-card k${esc(e.kind)} ${d >= 0 && d <= 7 ? 'soon' : ''}" data-a="${act}" data-id="${esc(e.id)}">
       <div class="ex-top"><span class="kind">${esc(e.kind)}</span><b>${esc(e.title)}</b><span class="count">${label}</span></div>
       <small>${fmtDate(e.date)}${t ? `　得点 ${t.sum}/${t.max}（${t.p.toFixed(1)}%）` : ''}${e.reflection?.ai || e.reflection?.bad ? '　振り返り済み' : ''}</small>
       ${act === 'editExam' && e.subjects?.length ? `<ul class="ranges">${e.subjects.map((s) => `<li><i>${esc(s.name)}</i><span>${esc(s.range || '範囲未入力')}</span></li>`).join('')}</ul>` : ''}</button>`;
   }
   function planTab() {
     const today = todayKey();
-    const up = exams.filter((e) => e.date >= today).sort(byDate);
+    const addDays = (d, n) => {
+      const x = new Date(d + 'T00:00');
+      x.setDate(x.getDate() + n);
+      return todayKey(x);
+    };
+    const left = (d) => (dayDiff(d) === 0 ? '今日' : `あと${dayDiff(d)}日`);
+    const evs = [
+      ...exams.filter((e) => e.date >= today).map((e) => ({ date: e.date, type: 'exam', kind: e.kind, id: e.id, title: e.title, sub: `${(e.subjects || []).map((s) => s.name).join('・')}${e.subjects?.length ? '　' : ''}${left(e.date)}` })),
+      ...tasks.filter((t) => !t.done && t.due >= today).map((t) => ({ date: t.due, type: 'task', kind: '課題', id: t.id, title: t.title, sub: `課題の期限${t.subject ? '（' + t.subject + '）' : ''}　${left(t.due)}` })),
+    ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
+    const strip = days
+      .map((d) => {
+        const x = new Date(d + 'T00:00');
+        const has = evs.some((e) => e.date === d);
+        return `<button class="dy ${d === today ? 'today' : ''} ${d === selDay ? 'sel' : ''}" data-a="selDay" data-d="${d}">${WD[x.getDay()]}<b>${x.getDate()}</b><i class="${has ? 'has' : ''}"></i></button>`;
+      })
+      .join('');
+    const ev = (e) => {
+      const x = new Date(e.date + 'T00:00');
+      return `<button class="ev" data-a="${e.type === 'exam' ? 'editExam' : 'goTask'}" data-id="${esc(e.id)}"><span class="tm">${x.getMonth() + 1}/${x.getDate()}<br>${WD[x.getDay()]}</span><span class="bx k${esc(e.kind)}"><b>${esc(e.title)}</b><small>${esc(e.sub)}</small></span></button>`;
+    };
+    const weekEnd = days[6];
+    const now = selDay ? evs.filter((e) => e.date === selDay) : evs.filter((e) => e.date <= weekEnd);
+    const later = selDay ? [] : evs.filter((e) => e.date > weekEnd);
     const past = exams.filter((e) => e.date < today).sort((a, b) => byDate(b, a));
-    return `<button class="primary big" data-a="newExam">${ICON.plus}<span>考査・模試を追加</span></button>
-      ${up.length ? `<div class="group-title">これから</div>${up.map((e) => examCard(e, 'editExam')).join('')}` : '<p class="empty">これからの試験はまだありません。<br>「考査・模試を追加」から登録しましょう。</p>'}
+    return `<div class="strip">${strip}</div>
+      <button class="add-pill" data-a="newExam">${ICON.plus}<span>考査・模試を追加</span></button>
+      <div class="group-title">${selDay ? fmtDate(selDay) + 'の予定' : '今週のできごと'}</div>
+      ${now.length ? now.map(ev).join('') : '<p class="empty">この期間の予定はありません</p>'}
+      ${later.length ? `<div class="group-title">少し先</div>${later.map(ev).join('')}` : ''}
       ${past.length ? `<div class="group-title">終わった試験</div>${past.map((e) => examCard(e, 'editExam')).join('')}` : ''}`;
   }
 
@@ -294,6 +322,15 @@ export function mount(root, ctx) {
     try {
       if (a === 'tab') {
         tab = t.dataset.t;
+        lsSet('exam:tab', tab);
+        return render();
+      }
+      if (a === 'selDay') {
+        selDay = selDay === t.dataset.d ? null : t.dataset.d;
+        return render();
+      }
+      if (a === 'goTask') {
+        tab = 'task';
         lsSet('exam:tab', tab);
         return render();
       }
