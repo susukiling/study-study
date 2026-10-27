@@ -218,3 +218,8 @@ body[data-theme='exam'] .exam-seg button.on { color: #2e9e6b; }
 body[data-theme='exam']:not([data-mode='dark']) { background-image: linear-gradient(rgba(46, 158, 107, .09) 1px, transparent 1px), linear-gradient(90deg, rgba(46, 158, 107, .09) 1px, transparent 1px); background-size: 24px 24px; }
 body[data-theme='exam'][data-mode='dark'] { background-image: linear-gradient(rgba(70, 200, 140, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(70, 200, 140, .07) 1px, transparent 1px); background-size: 24px 24px; }
 body[data-theme='exam'] .tab.active .ti { background: #2e9e6b; }
+
+/* ログイン画面：ノートの罫線なしの、すっきりした背景 */
+body[data-theme='login'] { background: #ffffff; background-image: none; }
+body[data-theme='login'][data-mode='dark'] { background: #14161b; background-image: none; }
+body[data-theme='login'] #app::before, body[data-theme='login'] .shell::before { display: none; }
