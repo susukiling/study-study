@@ -206,18 +206,21 @@ body[data-theme='anything'] .tab.active .ti { background: linear-gradient(135deg
 body[data-theme='anything'] .seg { background: var(--soft); }
 body[data-theme='anything'] .score-ring::before { background: transparent; }
 
-/* ========== 考査ノート：方眼の答案用紙と赤ペン ========== */
-body[data-theme='exam'] { --c: #2e9e6b; }
-body[data-theme='exam'] .nav h1 { letter-spacing: .06em; }
-body[data-theme='exam'] .nav { border-bottom: 3px solid #2e9e6b; }
-body[data-theme='exam'] .card, body[data-theme='exam'] .group { border-radius: 14px; }
-body[data-theme='exam'] .primary, body[data-theme='exam'] .btn { background: linear-gradient(135deg, #2e9e6b, #23805a); box-shadow: 0 4px 0 #1a6347; border-radius: 14px; }
-body[data-theme='exam'] .primary:active { box-shadow: 0 1px 0 #1a6347; }
-body[data-theme='exam'] .exam-card { border-left: 6px solid var(--c); }
-body[data-theme='exam'] .exam-seg button.on { color: #2e9e6b; }
-body[data-theme='exam']:not([data-mode='dark']) { background-image: linear-gradient(rgba(46, 158, 107, .09) 1px, transparent 1px), linear-gradient(90deg, rgba(46, 158, 107, .09) 1px, transparent 1px); background-size: 24px 24px; }
-body[data-theme='exam'][data-mode='dark'] { background-image: linear-gradient(rgba(70, 200, 140, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(70, 200, 140, .07) 1px, transparent 1px); background-size: 24px 24px; }
+/* ========== 考査ノート：カレンダー風（すっきり・色分け） ========== */
+body[data-theme='exam'] { --c: #2e9e6b; --paper: #fff; background: #f6f7fb; background-image: none; }
+body[data-theme='exam'][data-mode='dark'] { --paper: #1b1e27; background: #0f1117; background-image: none; }
+body[data-theme='exam'] .nav { border-bottom: 0; background: transparent; }
+body[data-theme='exam'] .card, body[data-theme='exam'] .group { border-radius: 16px; box-shadow: 0 1px 3px rgba(20, 30, 60, .08); }
+body[data-theme='exam'] .primary, body[data-theme='exam'] .btn { background: #2e9e6b; box-shadow: none; border-radius: 999px; }
+body[data-theme='exam'] .primary:active { transform: scale(.98); }
+body[data-theme='exam'] .exam-seg { background: #e8eaf2; border-radius: 14px; }
+body[data-theme='exam'][data-mode='dark'] .exam-seg { background: #23262f; }
+body[data-theme='exam'] .exam-seg button.on { color: var(--ink); }
 body[data-theme='exam'] .tab.active .ti { background: #2e9e6b; }
+body[data-theme='exam'] textarea { background-image: none; line-height: 1.6; }
+body[data-theme='exam'] .exam-card { border-left: 0; background: color-mix(in srgb, var(--kc, #2e9e6b) 12%, var(--paper)); box-shadow: inset 5px 0 0 var(--kc, #2e9e6b); }
+body[data-theme='exam'] .kind { background: var(--kc, #2e9e6b); }
+body[data-theme='exam'] .exam-card.soon { box-shadow: inset 5px 0 0 var(--kc, #2e9e6b); }
 
 /* ログイン画面：ノートの罫線なしの、すっきりした背景 */
 body[data-theme='login'] { background: #ffffff; background-image: none; }
