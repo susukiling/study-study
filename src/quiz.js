@@ -233,7 +233,7 @@ export function runQuiz(root, opts) {
     if (q.type === 'choice') {
       body = `<div class="choices">${q.choices.map((c, i) => `<button class="choice" data-i="${i}"><span class="n">${i + 1}</span><span class="t">${esc(c)}</span></button>`).join('')}</div>`;
     } else if (q.type === 'type') {
-      body = `<form class="typebox" data-a="typeform"><input id="ans" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="スペルを入力" /><div id="typeActions"><button class="primary" type="submit">確認</button><button type="button" class="text-btn" data-a="giveup">わからない</button></div></form>`;
+      body = `<form class="typebox" data-a="typeform"><input id="ans" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="${esc(q.placeholder || 'スペルを入力')}" /><div id="typeActions"><button class="primary" type="submit">確認</button><button type="button" class="text-btn" data-a="giveup">わからない</button></div></form>`;
     } else {
       body = `<div class="padbox"><canvas id="pad" width="480" height="480"></canvas></div>
         <div class="pad-tools" id="writeActions"><button id="undo" class="tool">${ICON.undo}<span>一つ戻す</span></button><button id="clear" class="tool">${ICON.trash}<span>全部消す</span></button><button id="grade" class="primary">${q.selfJudge ? '答えを見る' : '採点する'}</button></div>`;
