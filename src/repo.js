@@ -11,6 +11,7 @@ import {
   query,
   orderBy,
   limit,
+  writeBatch,
 } from 'firebase/firestore';
 import { hasFirebase, db } from './firebase.js';
 import { lsGet, lsSet } from './dom.js';
@@ -105,4 +106,157 @@ export async function deleteItem(uid, col, id) {
     return;
   }
   await deleteDoc(doc(db, 'users', uid, col, id));
+}
+
+/* ---- クラス（Classroomのように、コードで参加して予定を配信する） ----
+   Firestore:  classCodes/{コード} → { classId, ownerUid }
+               classes/{id} → { name, code, ownerUid, ownerName, createdAt }
+               classes/{id}/members/{uid} → { name, joinedAt }
+               classes/{id}/posts/{postId} → 配信（予定・小テスト・お知らせ）
+               users/{uid}/classes/{id} → { name, role }   ← 自分の参加クラス一覧
+   デモ（Firebase未設定）のときは、この端末の中だけで動きます。 */
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const genCode = () => Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+const clean = (o) => JSON.parse(JSON.stringify(o));
+
+export async function createClass(uid, name, ownerName) {
+  for (let i = 0; i < 6; i++) {
+    const code = genCode();
+    if (!hasFirebase) {
+      const all = lsGet('classes', []);
+      if (all.some((c) => c.code === code)) continue;
+      const id = 'c' + Date.now();
+      all.push({ id, code, name, ownerUid: uid, ownerName, createdAt: Date.now(), members: [{ uid, name: ownerName }], posts: [] });
+      lsSet('classes', all);
+      return { id, code };
+    }
+    const codeRef = doc(db, 'classCodes', code);
+    if ((await getDoc(codeRef)).exists()) continue;
+    const classRef = doc(collection(db, 'classes'));
+    const b = writeBatch(db);
+    b.set(classRef, { name, code, ownerUid: uid, ownerName, createdAt: Date.now() });
+    b.set(codeRef, { classId: classRef.id, ownerUid: uid });
+    b.set(doc(db, 'classes', classRef.id, 'members', uid), { name: ownerName, joinedAt: Date.now() });
+    b.set(doc(db, 'users', uid, 'classes', classRef.id), { name, role: 'owner' });
+    await b.commit();
+    return { id: classRef.id, code };
+  }
+  throw new Error('コードを作れませんでした。もう一度お試しください');
+}
+
+export async function joinClass(uid, name, rawCode) {
+  const code = String(rawCode || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length < 4) throw new Error('コードを入力してください');
+  if (!hasFirebase) {
+    const all = lsGet('classes', []);
+    const c = all.find((x) => x.code === code);
+    if (!c) throw new Error('そのコードのクラスが見つかりません');
+    if (!c.members.some((m) => m.uid === uid)) c.members.push({ uid, name });
+    lsSet('classes', all);
+    return { id: c.id, name: c.name };
+  }
+  const snap = await getDoc(doc(db, 'classCodes', code));
+  if (!snap.exists()) throw new Error('そのコードのクラスが見つかりません');
+  const classId = snap.data().classId;
+  await setDoc(doc(db, 'classes', classId, 'members', uid), { name, joinedAt: Date.now() });
+  const cls = await getDoc(doc(db, 'classes', classId));
+  if (!cls.exists()) throw new Error('そのクラスは削除されています');
+  await setDoc(doc(db, 'users', uid, 'classes', classId), { name: cls.data().name, role: cls.data().ownerUid === uid ? 'owner' : 'member' });
+  return { id: classId, name: cls.data().name };
+}
+
+export async function listMyClasses(uid) {
+  if (!hasFirebase) {
+    return lsGet('classes', [])
+      .filter((c) => c.members.some((m) => m.uid === uid))
+      .map((c) => ({ id: c.id, name: c.name, role: c.ownerUid === uid ? 'owner' : 'member' }));
+  }
+  const snap = await getDocs(collection(db, 'users', uid, 'classes'));
+  const out = [];
+  for (const d of snap.docs) {
+    try {
+      const c = await getDoc(doc(db, 'classes', d.id));
+      if (c.exists()) out.push({ id: d.id, name: c.data().name, role: c.data().ownerUid === uid ? 'owner' : 'member' });
+      else await deleteDoc(d.ref); // 削除されたクラスは一覧から外す
+    } catch {
+      await deleteDoc(d.ref).catch(() => {});
+    }
+  }
+  return out;
+}
+
+export async function getClass(uid, id) {
+  if (!hasFirebase) {
+    const c = lsGet('classes', []).find((x) => x.id === id);
+    if (!c) return null;
+    return { id, name: c.name, code: c.code, ownerUid: c.ownerUid, ownerName: c.ownerName, role: c.ownerUid === uid ? 'owner' : 'member', members: c.members };
+  }
+  const s = await getDoc(doc(db, 'classes', id));
+  if (!s.exists()) return null;
+  const c = s.data();
+  const role = c.ownerUid === uid ? 'owner' : 'member';
+  let members = [];
+  if (role === 'owner') members = (await getDocs(collection(db, 'classes', id, 'members'))).docs.map((d) => ({ uid: d.id, ...d.data() }));
+  return { id, name: c.name, code: c.code, ownerUid: c.ownerUid, ownerName: c.ownerName, role, members };
+}
+
+export async function listPosts(id) {
+  if (!hasFirebase) return lsGet('classes', []).find((x) => x.id === id)?.posts || [];
+  const snap = await getDocs(collection(db, 'classes', id, 'posts'));
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+}
+export async function savePost(id, post) {
+  const pid = post.id || 'p' + Date.now() + Math.random().toString(36).slice(2, 5);
+  const data = clean({ ...post, id: undefined });
+  if (!hasFirebase) {
+    const all = lsGet('classes', []);
+    const c = all.find((x) => x.id === id);
+    const i = c.posts.findIndex((p) => p.id === pid);
+    const rec = { id: pid, ...data };
+    if (i >= 0) c.posts[i] = rec;
+    else c.posts.push(rec);
+    lsSet('classes', all);
+    return pid;
+  }
+  await setDoc(doc(db, 'classes', id, 'posts', pid), data);
+  return pid;
+}
+export async function deletePost(id, pid) {
+  if (!hasFirebase) {
+    const all = lsGet('classes', []);
+    const c = all.find((x) => x.id === id);
+    c.posts = c.posts.filter((p) => p.id !== pid);
+    lsSet('classes', all);
+    return;
+  }
+  await deleteDoc(doc(db, 'classes', id, 'posts', pid));
+}
+
+export async function leaveClass(uid, id) {
+  if (!hasFirebase) {
+    const all = lsGet('classes', []);
+    const c = all.find((x) => x.id === id);
+    if (c) c.members = c.members.filter((m) => m.uid !== uid);
+    lsSet('classes', all);
+    return;
+  }
+  await deleteDoc(doc(db, 'classes', id, 'members', uid));
+  await deleteDoc(doc(db, 'users', uid, 'classes', id));
+}
+
+export async function deleteClass(uid, id) {
+  if (!hasFirebase) {
+    lsSet('classes', lsGet('classes', []).filter((c) => c.id !== id));
+    return;
+  }
+  const c = await getDoc(doc(db, 'classes', id));
+  const code = c.exists() ? c.data().code : null;
+  for (const sub of ['posts', 'members']) {
+    const snap = await getDocs(collection(db, 'classes', id, sub));
+    for (const d of snap.docs) if (!(sub === 'members' && d.id === uid)) await deleteDoc(d.ref);
+  }
+  if (code) await deleteDoc(doc(db, 'classCodes', code)).catch(() => {});
+  await deleteDoc(doc(db, 'classes', id, 'members', uid)).catch(() => {});
+  await deleteDoc(doc(db, 'classes', id));
+  await deleteDoc(doc(db, 'users', uid, 'classes', id)).catch(() => {});
 }
