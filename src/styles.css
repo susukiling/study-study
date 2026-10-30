@@ -425,3 +425,7 @@ body[data-mode='dark'] .choice .n { color: var(--ink); }
 .ev .tm { width: 44px; flex: none; font-size: 12px; color: var(--sub); padding-top: 12px; line-height: 1.4; }
 .ev .bx { flex: 1; min-width: 0; border-radius: 14px; padding: 11px 13px; background: color-mix(in srgb, var(--kc) 14%, var(--paper)); box-shadow: inset 5px 0 0 var(--kc); padding-left: 18px; }
 .ev .bx b { display: block; font-size: 15px; } .ev .bx small { display: block; font-size: 12px; color: var(--ink2); opacity: .8; margin-top: 2px; }
+
+.range-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.range-title .seg { width: 150px; padding: 2px; } .range-title .seg button { padding: 4px 8px; }
+.range-title .unit { font-weight: 400; }
