@@ -1,10 +1,11 @@
 import { esc, toast, todayKey, lsGet, lsSet } from '../dom.js';
 import { ICON } from '../ui.js';
-import { listItems, saveItem, deleteItem } from '../repo.js';
+import { listItems, saveItem, deleteItem, createClass, joinClass, listMyClasses, getClass, listPosts, savePost, deletePost, leaveClass, deleteClass } from '../repo.js';
+import { EXAM_KINDS, EVENT_TYPES, POST_TYPES, colorOf, WD as WDAYS, ymd, parse, addDays, buildEvents, monthGrid, toICS, fmtDate as fmtD } from '../calendar.js';
 import { ACCEPT, readAll, fileChips } from '../files.js';
 import { extractRange, analyzeScores, analyzeReflection, makePlan } from '../ai.js';
 
-const SUBJECTS = ['国語', '数学', '英語', '理科','理科1','理科2', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
+const SUBJECTS = ['国語', '数学', '英語', '理科', '理科1', '理科2', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
 const COLORS = ['#e5584b', '#f09a00', '#2e9e6b', '#3b82f6', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -22,7 +23,7 @@ const total = (e) => {
   const max = ss.reduce((a, s) => a + Number(s.max), 0);
   return { sum, max, p: (sum / max) * 100 };
 };
-const colorOf = (name, all) => COLORS[Math.max(0, all.indexOf(name)) % COLORS.length];
+const subjColor = (name, all) => COLORS[Math.max(0, all.indexOf(name)) % COLORS.length];
 
 function lineChart(exams) {
   const list = exams.filter((e) => total(e)).sort((a, b) => (a.date < b.date ? -1 : 1)).slice(-8);
@@ -42,11 +43,11 @@ function lineChart(exams) {
   };
   let body = '';
   names.forEach((n) => {
-    body += line(list.map((e, i) => ({ i, v: pct(e.subjects.find((s) => s.name === n) || {}) })), colorOf(n, names), 2);
+    body += line(list.map((e, i) => ({ i, v: pct(e.subjects.find((s) => s.name === n) || {}) })), subjColor(n, names), 2);
   });
   body += line(list.map((e, i) => ({ i, v: total(e).p })), 'var(--ink)', 3.2, '6 4');
   const xl = list.map((e, i) => `<text x="${x(i).toFixed(1)}" y="${H - 8}" class="ax" text-anchor="middle">${esc(e.date.slice(5).replace('-', '/'))}</text>`).join('');
-  const legend = names.map((n) => `<span><i style="background:${colorOf(n, names)}"></i>${esc(n)}</span>`).join('') + '<span><i class="dash"></i>合計</span>';
+  const legend = names.map((n) => `<span><i style="background:${subjColor(n, names)}"></i>${esc(n)}</span>`).join('') + '<span><i class="dash"></i>合計</span>';
   return `<svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="得点率の推移">${g}${body}${xl}</svg><div class="legend">${legend}</div>`;
 }
 
@@ -60,7 +61,7 @@ const aiCard = (r) =>
 export function mount(root, ctx) {
   const uid = ctx.user.uid;
   let alive = true;
-  let tab = lsGet('exam:tab', 'plan');
+  let tab = ((t) => (t === 'plan' ? 'cal' : t))(lsGet('exam:tab', 'cal'));
   let screen = 'list';
   let cur = null;
   let exams = [];
@@ -68,6 +69,19 @@ export function mount(root, ctx) {
   let plan = null;
   let scoreAI = null;
   let files = [];
+  let events = [];
+  let classes = [];
+  let posts = [];
+  let calView = lsGet('exam:view', 'month');
+  const now0 = new Date();
+  let ym = { y: now0.getFullYear(), m: now0.getMonth() };
+  let pickDate = null;
+  let curEvent = null;
+  let curClass = null;
+  let classPosts = [];
+  let curPost = null;
+  let postBack = 'list';
+  let classForm = null;
   let showTaskForm = false;
   let selDay = null;
   const mins = lsGet('exam:mins', { wd: 90, hd: 180 });
@@ -82,9 +96,10 @@ export function mount(root, ctx) {
 
   async function load() {
     try {
-      const [e, t, p] = await Promise.all([listItems(uid, 'exams'), listItems(uid, 'tasks'), listItems(uid, 'plans')]);
+      const [e, t, p, ev] = await Promise.all([listItems(uid, 'exams'), listItems(uid, 'tasks'), listItems(uid, 'plans'), listItems(uid, 'events')]);
       exams = e;
       tasks = t;
+      events = ev;
       plan = p.find((x) => x.id === 'current') || null;
       scoreAI = p.find((x) => x.id === 'scoreAI') || null;
     } catch (err) {
@@ -92,10 +107,30 @@ export function mount(root, ctx) {
       toast('データを読み込めませんでした');
     }
     if (alive) render();
+    await loadClasses();
+  }
+
+  /** 参加しているクラスと、その配信を読み込む（読めなかったクラスは飛ばす） */
+  async function loadClasses() {
+    try {
+      classes = await listMyClasses(uid);
+      const all = [];
+      for (const c of classes) {
+        try {
+          (await listPosts(c.id)).forEach((p) => all.push({ ...p, cid: c.id, cname: c.name }));
+        } catch (err) {
+          console.warn(err);
+        }
+      }
+      posts = all;
+    } catch (err) {
+      console.warn(err);
+    }
+    if (alive && screen === 'list') render();
   }
 
   /* ---------------- 共通の部品 ---------------- */
-  const tabs = () => `<div class="seg exam-seg">${[['plan', '予定'], ['score', '点数'], ['task', '課題'], ['reflect', '振り返り']]
+  const tabs = () => `<div class="seg exam-seg">${[['cal', '予定'], ['score', '点数'], ['task', '課題'], ['reflect', '振り返り'], ['class', 'クラス']]
     .map(([k, l]) => `<button data-a="tab" data-t="${k}" class="${tab === k ? 'on' : ''}">${l}</button>`)
     .join('')}</div>`;
 
@@ -111,40 +146,150 @@ export function mount(root, ctx) {
       <small>${fmtDate(e.date)}${t ? `　得点 ${t.sum}/${t.max}（${t.p.toFixed(1)}%）` : ''}${e.reflection?.ai || e.reflection?.bad ? '　振り返り済み' : ''}</small>
       ${act === 'editExam' && e.subjects?.length ? `<ul class="ranges">${e.subjects.map((s) => `<li><i>${esc(s.name)}</i><span>${esc(s.range || '範囲未入力')}</span></li>`).join('')}</ul>` : ''}</button>`;
   }
-  function planTab() {
+  /* ---------------- 予定（カレンダー） ---------------- */
+  const evRow = (e) => {
+    const x = parse(e.date);
+    const act = { exam: 'editExam', event: 'editEvent', post: 'viewPost', task: 'goTask' }[e.src];
+    return `<button class="ev" data-a="${act}" data-id="${esc(e.id)}" data-cid="${esc(e.cid || '')}"><span class="tm">${x.getMonth() + 1}/${x.getDate()}<br>${WDAYS[x.getDay()]}</span><span class="bx" style="--kc:${colorOf(e.type)}"><b>${esc(e.title)}</b><small>${esc(e.type)}${e.time ? ' ' + esc(e.time) : ''}${e.sub ? '　' + esc(e.sub) : ''}${e.repeat ? '　くり返し' : ''}</small></span></button>`;
+  };
+  const allEvents = (from, to) => buildEvents({ exams, events, tasks, posts, from, to });
+  const leftLabel = (d) => (dayDiff(d) === 0 ? '今日' : `あと${dayDiff(d)}日`);
+
+  function calTab() {
+    const seg = `<div class="seg sm cal-view"><button data-a="calView" data-v="month" class="${calView === 'month' ? 'on' : ''}">月</button><button data-a="calView" data-v="list" class="${calView === 'list' ? 'on' : ''}">リスト</button></div>`;
+    return `<div class="cal-top">${seg}<button class="add-pill sm" data-a="pick">${ICON.plus}<span>予定を追加</span></button></div>
+      ${calView === 'month' ? monthView() : listView()}
+      <button class="ghost wide" data-a="ics">${ICON.exam}<span>iPadのカレンダーに書き出す</span></button>`;
+  }
+
+  function monthView() {
+    const { y, m } = ym;
+    const grid = monthGrid(y, m);
+    const from = grid[0][0];
+    const to = grid[grid.length - 1][6];
+    const by = {};
+    allEvents(from, to).forEach((e) => (by[e.date] ||= []).push(e));
     const today = todayKey();
-    const addDays = (d, n) => {
-      const x = new Date(d + 'T00:00');
-      x.setDate(x.getDate() + n);
-      return todayKey(x);
+    const sel = selDay || today;
+    const mk = `${y}-${String(m + 1).padStart(2, '0')}`;
+    const cell = (d) => {
+      const list = by[d] || [];
+      const types = [...new Set(list.map((e) => e.type))];
+      return `<button class="cd ${d.slice(0, 7) === mk ? '' : 'o'} ${d === today ? 'today' : ''} ${d === sel ? 'sel' : ''}" data-a="calDay" data-d="${d}"><span class="n">${Number(d.slice(8))}</span><span class="dots">${types.slice(0, 4).map((t) => `<i style="background:${colorOf(t)}"></i>`).join('')}</span>${list.length > 1 ? `<em>${list.length}</em>` : ''}</button>`;
     };
-    const left = (d) => (dayDiff(d) === 0 ? '今日' : `あと${dayDiff(d)}日`);
-    const evs = [
-      ...exams.filter((e) => e.date >= today).map((e) => ({ date: e.date, type: 'exam', kind: e.kind, id: e.id, title: e.title, sub: `${(e.subjects || []).map((s) => s.name).join('・')}${e.subjects?.length ? '　' : ''}${left(e.date)}` })),
-      ...tasks.filter((t) => !t.done && t.due >= today).map((t) => ({ date: t.due, type: 'task', kind: '課題', id: t.id, title: t.title, sub: `課題の期限${t.subject ? '（' + t.subject + '）' : ''}　${left(t.due)}` })),
-    ].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const dayEvs = by[sel] || [];
+    return `<div class="card calcard">
+        <div class="cal-head"><button class="nav-b" data-a="mPrev" aria-label="前の月">${ICON.chevron}</button><b>${y}年${m + 1}月</b><button class="nav-b" data-a="mNext" aria-label="次の月">${ICON.chevron}</button><button class="chip" data-a="mToday">今日</button></div>
+        <div class="cal-wd">${WDAYS.map((w, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</span>`).join('')}</div>
+        <div class="cal-grid">${grid.map((w) => w.map(cell).join('')).join('')}</div>
+      </div>
+      <div class="group-title">${fmtD(sel)}の予定</div>
+      ${dayEvs.length ? dayEvs.map(evRow).join('') : '<p class="empty small">この日の予定はありません</p>'}
+      <button class="ghost wide" data-a="pick" data-d="${sel}">${ICON.plus}<span>この日に予定を追加</span></button>`;
+  }
+
+  function listView() {
+    const today = todayKey();
     const days = Array.from({ length: 7 }, (_, i) => addDays(today, i));
+    const evs = allEvents(today, addDays(today, 150));
     const strip = days
       .map((d) => {
-        const x = new Date(d + 'T00:00');
+        const x = parse(d);
         const has = evs.some((e) => e.date === d);
-        return `<button class="dy ${d === today ? 'today' : ''} ${d === selDay ? 'sel' : ''}" data-a="selDay" data-d="${d}">${WD[x.getDay()]}<b>${x.getDate()}</b><i class="${has ? 'has' : ''}"></i></button>`;
+        return `<button class="dy ${d === today ? 'today' : ''} ${d === selDay ? 'sel' : ''}" data-a="selDay" data-d="${d}">${WDAYS[x.getDay()]}<b>${x.getDate()}</b><i class="${has ? 'has' : ''}"></i></button>`;
       })
       .join('');
-    const ev = (e) => {
-      const x = new Date(e.date + 'T00:00');
-      return `<button class="ev" data-a="${e.type === 'exam' ? 'editExam' : 'goTask'}" data-id="${esc(e.id)}"><span class="tm">${x.getMonth() + 1}/${x.getDate()}<br>${WD[x.getDay()]}</span><span class="bx k${esc(e.kind)}"><b>${esc(e.title)}</b><small>${esc(e.sub)}</small></span></button>`;
-    };
     const weekEnd = days[6];
     const now = selDay ? evs.filter((e) => e.date === selDay) : evs.filter((e) => e.date <= weekEnd);
-    const later = selDay ? [] : evs.filter((e) => e.date > weekEnd);
+    const later = selDay ? [] : evs.filter((e) => e.date > weekEnd).slice(0, 40);
     const past = exams.filter((e) => e.date < today).sort((a, b) => byDate(b, a));
     return `<div class="strip">${strip}</div>
-      <button class="add-pill" data-a="newExam">${ICON.plus}<span>考査・模試を追加</span></button>
-      <div class="group-title">${selDay ? fmtDate(selDay) + 'の予定' : '今週のできごと'}</div>
-      ${now.length ? now.map(ev).join('') : '<p class="empty">この期間の予定はありません</p>'}
-      ${later.length ? `<div class="group-title">少し先</div>${later.map(ev).join('')}` : ''}
+      <div class="group-title">${selDay ? fmtD(selDay) + 'の予定' : '今週のできごと'}</div>
+      ${now.length ? now.map(evRow).join('') : '<p class="empty small">この期間の予定はありません</p>'}
+      ${later.length ? `<div class="group-title">少し先</div>${later.map(evRow).join('')}` : ''}
       ${past.length ? `<div class="group-title">終わった試験</div>${past.map((e) => examCard(e, 'editExam')).join('')}` : ''}`;
+  }
+
+  const PICK_DESC = { 考査: '範囲・点数・振り返りを記録', 模試: '範囲・点数・振り返りを記録', 小テスト: '範囲・点数・振り返りを記録', 提出: '提出物の期限', 授業: '時間割・補講など', 部活: '練習・試合など', 行事: '学校の行事', 予定: 'そのほか何でも' };
+  function pickScreen() {
+    const btn = (t) => `<button class="pick" data-a="newOf" data-t="${t}" style="--kc:${colorOf(t)}"><i></i><span><b>${t}</b><small>${PICK_DESC[t]}</small></span></button>`;
+    return `<button class="text-btn back" data-a="back">‹ 戻る</button><h2 class="large">なにを追加する？</h2><p class="sub">${fmtD(pickDate || todayKey())}</p>
+      <div class="group-title">点数や振り返りを残せるもの</div><div class="picks">${EXAM_KINDS.map(btn).join('')}</div>
+      <div class="group-title">予定だけ入れるもの（くり返しもOK）</div><div class="picks">${EVENT_TYPES.map(btn).join('')}</div>`;
+  }
+
+  function eventForm() {
+    const e = curEvent;
+    return `<button class="text-btn back" data-a="back">‹ 戻る</button>
+      <h2 class="large">${e.id ? '予定を編集' : '予定を追加'}</h2>
+      <div class="group-title">名前</div><input class="text" id="e-title" placeholder="例）英語ワーク提出 / 吹奏楽の練習" value="${esc(e.title)}" />
+      <div class="group-title">日時</div>
+      <div class="group"><label class="row field"><span>種類</span><select id="e-type">${EVENT_TYPES.map((k) => `<option ${k === e.type ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+        <label class="row field"><span>日付</span><input type="date" id="e-date" value="${esc(e.date)}" /></label>
+        <label class="row field"><span>時間（なくてもOK）</span><input type="time" id="e-time" value="${esc(e.time || '')}" /></label></div>
+      <div class="group-title">くり返し</div>
+      <div class="group"><label class="row field"><span>くり返し</span><select id="e-repeat">${[['none', 'なし'], ['weekly', '毎週'], ['biweekly', '隔週'], ['monthly', '毎月']].map(([k, l]) => `<option value="${k}" ${k === (e.repeat || 'none') ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="row field"><span>終わりの日（空ならずっと）</span><input type="date" id="e-until" value="${esc(e.until || '')}" /></label></div>
+      <div class="group-title">メモ</div><textarea id="e-note" rows="3" placeholder="持ち物・場所など">${esc(e.note || '')}</textarea>
+      <button class="primary big" data-a="saveEvent"><span>保存する</span></button>
+      ${e.id ? `<button class="danger" data-a="delEvent">${ICON.trash}<span>この予定を削除${e.repeat && e.repeat !== 'none' ? '（くり返し全部）' : ''}</span></button>` : ''}`;
+  }
+
+  /* ---------------- クラス（配信） ---------------- */
+  function classTab() {
+    const form =
+      classForm === 'create'
+        ? `<div class="card taskform"><input class="text" id="c-name" placeholder="クラスの名前（例: 2年A組）" /><div class="two"><button class="primary" data-a="doCreate"><span>作る</span></button><button class="text-btn" data-a="classForm" data-f="">やめる</button></div></div>`
+        : classForm === 'join'
+          ? `<div class="card taskform"><input class="text code-in" id="c-code" placeholder="参加コード（6文字）" autocapitalize="characters" autocomplete="off" maxlength="8" /><div class="two"><button class="primary" data-a="doJoin"><span>参加する</span></button><button class="text-btn" data-a="classForm" data-f="">やめる</button></div></div>`
+          : `<div class="two2"><button class="primary" data-a="classForm" data-f="create"><span>クラスを作る</span></button><button class="ghost" data-a="classForm" data-f="join"><span>コードで参加</span></button></div>`;
+    return `<p class="footnote lead">クラスを作ると、小テスト・提出・お知らせを「配信」できます。友達は参加コードを入れるだけで、みんなのカレンダーに自動で出ます。</p>
+      ${form}
+      <div class="group-title">参加中のクラス (${classes.length})</div>
+      ${classes.length ? classes.map((c) => `<button class="card cls-card" data-a="openClass" data-id="${esc(c.id)}"><b>${esc(c.name)}</b><span class="kind">${c.role === 'owner' ? '作成者' : '参加中'}</span></button>`).join('') : '<p class="empty small">まだクラスがありません</p>'}`;
+  }
+
+  function classScreen() {
+    const c = curClass;
+    const owner = c.role === 'owner';
+    const list = classPosts.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    const today = todayKey();
+    return `<button class="text-btn back" data-a="back">‹ 戻る</button>
+      <h2 class="large">${esc(c.name)}</h2><p class="sub">${owner ? '作成者' : '参加中'}　・　${esc(c.ownerName || '')}</p>
+      ${owner ? `<div class="code-box"><small>参加コード（友達に教えてね）</small><b>${esc(c.code)}</b><button class="ghost" data-a="copyCode"><span>コピー</span></button></div>` : ''}
+      ${owner ? `<button class="primary big" data-a="newPost">${ICON.plus}<span>配信する</span></button>` : ''}
+      <div class="group-title">配信 (${list.length})</div>
+      ${list.length ? list.map((p) => `<button class="ev ${p.date < today ? 'past' : ''}" data-a="viewPost" data-id="${esc(p.id)}" data-cid="${esc(c.id)}" data-from="class"><span class="tm">${fmtD(p.date).replace('（', '<br>').replace('）', '')}</span><span class="bx" style="--kc:${colorOf(p.type)}"><b>${esc(p.title)}</b><small>${esc(p.type)}${p.time ? ' ' + esc(p.time) : ''}${p.subject ? '　' + esc(p.subject) : ''}</small></span></button>`).join('') : '<p class="empty small">まだ配信はありません</p>'}
+      ${owner && c.members?.length ? `<div class="group-title">参加者 (${c.members.length})</div><div class="card members">${c.members.map((m) => `<span class="fchip">${esc(m.name || '名前なし')}</span>`).join('')}</div>` : ''}
+      <button class="danger" data-a="${owner ? 'delClass' : 'leaveClass'}">${ICON.trash}<span>${owner ? 'このクラスを削除' : 'このクラスを抜ける'}</span></button>`;
+  }
+
+  function postForm() {
+    const p = curPost;
+    return `<button class="text-btn back" data-a="${postBack === 'class' ? 'backClass' : 'back'}">‹ 戻る</button>
+      <h2 class="large">${p.id ? '配信を編集' : '配信する'}</h2><p class="sub">${esc(curClass.name)}</p>
+      <div class="group-title">タイトル</div><input class="text" id="p-title" placeholder="例）英単語 小テスト / 数学ワーク提出" value="${esc(p.title)}" />
+      <div class="group-title">種類と日時</div>
+      <div class="group"><label class="row field"><span>種類</span><select id="p-type">${POST_TYPES.map((k) => `<option ${k === p.type ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+        <label class="row field"><span>教科</span><input id="p-subject" placeholder="英語" value="${esc(p.subject || '')}" /></label>
+        <label class="row field"><span>日付</span><input type="date" id="p-date" value="${esc(p.date)}" /></label>
+        <label class="row field"><span>時間（なくてもOK）</span><input type="time" id="p-time" value="${esc(p.time || '')}" /></label></div>
+      <div class="group-title">範囲</div><textarea id="p-range" rows="2" placeholder="例）Lesson 3 の単語 / p.20〜30">${esc(p.range || '')}</textarea>
+      <div class="group-title">メモ</div><textarea id="p-note" rows="3" placeholder="持ち物・連絡など">${esc(p.note || '')}</textarea>
+      <button class="primary big" data-a="savePost"><span>配信する</span></button>`;
+  }
+
+  function postView() {
+    const p = curPost;
+    const owner = curClass?.role === 'owner' || classes.find((c) => c.id === p.cid)?.role === 'owner';
+    const testy = ['小テスト', '考査', '模試'].includes(p.type);
+    return `<button class="text-btn back" data-a="${postBack === 'class' ? 'backClass' : 'back'}">‹ 戻る</button>
+      <div class="card postcard" style="--kc:${colorOf(p.type)}"><span class="kind" style="background:${colorOf(p.type)}">${esc(p.type)}</span><h2>${esc(p.title)}</h2>
+        <p class="sub">${fmtD(p.date)}${p.time ? ' ' + esc(p.time) : ''}　${esc(p.cname || curClass?.name || '')}</p>
+        ${p.subject ? `<p><b>教科</b>　${esc(p.subject)}</p>` : ''}${p.range ? `<p><b>範囲</b>　${esc(p.range)}</p>` : ''}${p.note ? `<p class="pnote">${esc(p.note)}</p>` : ''}</div>
+      ${testy ? `<button class="primary big" data-a="postToExam"><span>自分の記録に追加（点数を残す）</span></button>` : ''}
+      ${p.type === '提出' ? `<button class="primary big" data-a="postToTask"><span>自分の課題に追加</span></button>` : ''}
+      ${owner ? `<button class="ghost wide" data-a="editPost">${ICON.pen}<span>編集する</span></button><button class="danger" data-a="delPost">${ICON.trash}<span>この配信を削除</span></button>` : ''}`;
   }
 
   function examForm() {
@@ -154,7 +299,7 @@ export function mount(root, ctx) {
       <div class="group-title">名前</div>
       <input class="text" id="f-title" placeholder="例）2学期中間考査 / 第3回全国模試" value="${esc(e.title)}" />
       <div class="group-title">種類と日付</div>
-      <div class="group"><label class="row field"><span>種類</span><select id="f-kind">${['考査', '模試', 'その他'].map((k) => `<option ${k === e.kind ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+      <div class="group"><label class="row field"><span>種類</span><select id="f-kind">${[...EXAM_KINDS, 'その他'].map((k) => `<option ${k === e.kind ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
         <label class="row field"><span>試験日</span><input type="date" id="f-date" value="${esc(e.date)}" /></label></div>
       <div class="group-title">試験範囲</div>
       <div class="card attach">
@@ -273,7 +418,12 @@ export function mount(root, ctx) {
     if (screen === 'form') body = examForm();
     else if (screen === 'score') body = scoreForm();
     else if (screen === 'reflect') body = reflectForm();
-    else body = tabs() + `<div class="exam-body">${{ plan: planTab, score: scoreTab, task: taskTab, reflect: reflectTab }[tab]()}</div>`;
+    else if (screen === 'pick') body = pickScreen();
+    else if (screen === 'event') body = eventForm();
+    else if (screen === 'class') body = classScreen();
+    else if (screen === 'post') body = postForm();
+    else if (screen === 'postView') body = postView();
+    else body = tabs() + `<div class="exam-body">${{ cal: calTab, score: scoreTab, task: taskTab, reflect: reflectTab, class: classTab }[tab]()}</div>`;
     root.innerHTML = `<div class="page exam">${body}</div>`;
   }
 
@@ -286,6 +436,23 @@ export function mount(root, ctx) {
       cur.date = q('#f-date')?.value || cur.date;
       root.querySelectorAll('.s-name').forEach((el) => (cur.subjects[el.dataset.i].name = el.value.trim()));
       root.querySelectorAll('.s-range').forEach((el) => (cur.subjects[el.dataset.i].range = el.value.trim()));
+    } else if (screen === 'event' && curEvent) {
+      const g = (id, k) => (curEvent[k] = q(id)?.value ?? curEvent[k]);
+      curEvent.title = q('#e-title')?.value.trim() ?? curEvent.title;
+      g('#e-type', 'type');
+      curEvent.date = q('#e-date')?.value || curEvent.date;
+      g('#e-time', 'time');
+      g('#e-repeat', 'repeat');
+      g('#e-until', 'until');
+      g('#e-note', 'note');
+    } else if (screen === 'post' && curPost) {
+      curPost.title = q('#p-title')?.value.trim() ?? curPost.title;
+      curPost.type = q('#p-type')?.value ?? curPost.type;
+      curPost.subject = q('#p-subject')?.value.trim() ?? curPost.subject;
+      curPost.date = q('#p-date')?.value || curPost.date;
+      curPost.time = q('#p-time')?.value ?? curPost.time;
+      curPost.range = q('#p-range')?.value ?? curPost.range;
+      curPost.note = q('#p-note')?.value ?? curPost.note;
     } else if (screen === 'score' && cur) {
       root.querySelectorAll('.sc').forEach((el) => {
         const s = cur.subjects[el.dataset.i];
@@ -310,6 +477,9 @@ export function mount(root, ctx) {
   const back = () => {
     screen = 'list';
     cur = null;
+    curEvent = null;
+    curPost = null;
+    curClass = null;
     files = [];
     render();
   };
@@ -335,6 +505,188 @@ export function mount(root, ctx) {
         return render();
       }
       if (a === 'back') return back();
+      if (a === 'calView') {
+        calView = t.dataset.v;
+        lsSet('exam:view', calView);
+        return render();
+      }
+      if (a === 'calDay') {
+        selDay = t.dataset.d;
+        const x = parse(selDay);
+        ym = { y: x.getFullYear(), m: x.getMonth() };
+        return render();
+      }
+      if (a === 'mPrev' || a === 'mNext') {
+        const d = new Date(ym.y, ym.m + (a === 'mNext' ? 1 : -1), 1);
+        ym = { y: d.getFullYear(), m: d.getMonth() };
+        return render();
+      }
+      if (a === 'mToday') {
+        ym = { y: now0.getFullYear(), m: now0.getMonth() };
+        selDay = todayKey();
+        return render();
+      }
+      if (a === 'pick') {
+        pickDate = t.dataset.d || selDay || todayKey();
+        screen = 'pick';
+        return render();
+      }
+      if (a === 'newOf') {
+        const kind = t.dataset.t;
+        const date = pickDate || todayKey();
+        if (EXAM_KINDS.includes(kind)) {
+          cur = { title: '', kind, date, subjects: [] };
+          screen = 'form';
+          files = [];
+        } else {
+          curEvent = { title: '', type: kind, date, time: '', repeat: 'none', until: '', note: '' };
+          screen = 'event';
+        }
+        return render();
+      }
+      if (a === 'editEvent') {
+        curEvent = clone(events.find((x) => x.id === t.dataset.id));
+        screen = 'event';
+        return render();
+      }
+      if (a === 'saveEvent') {
+        sync();
+        if (!curEvent.title) return toast('予定の名前を入れてください');
+        const id = await saveItem(uid, 'events', curEvent);
+        const rec = { ...clone(curEvent), id };
+        const i = events.findIndex((x) => x.id === id);
+        if (i >= 0) events[i] = rec;
+        else events.push(rec);
+        toast('保存しました');
+        return back();
+      }
+      if (a === 'delEvent') {
+        if (!confirm('この予定を削除しますか？')) return;
+        await deleteItem(uid, 'events', curEvent.id);
+        events = events.filter((x) => x.id !== curEvent.id);
+        return back();
+      }
+      if (a === 'ics') {
+        const from = todayKey();
+        const items = allEvents(from, addDays(from, 180));
+        if (!items.length) return toast('書き出せる予定がありません');
+        const blob = new Blob([toICS(items)], { type: 'text/calendar' });
+        const url = URL.createObjectURL(blob);
+        const l = document.createElement('a');
+        l.href = url;
+        l.download = 'studyhub.ics';
+        document.body.appendChild(l);
+        l.click();
+        l.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        return toast('書き出しました。開くとカレンダーに追加できます');
+      }
+      /* ---- クラス ---- */
+      if (a === 'classForm') {
+        classForm = t.dataset.f || null;
+        return render();
+      }
+      if (a === 'doCreate') {
+        const name = root.querySelector('#c-name').value.trim();
+        if (!name) return toast('クラスの名前を入れてください');
+        const owner = ctx.user.name || (ctx.user.email || '').split('@')[0] || '作成者';
+        await createClass(uid, name, owner);
+        classForm = null;
+        toast('クラスを作りました');
+        await loadClasses();
+        return render();
+      }
+      if (a === 'doJoin') {
+        const code = root.querySelector('#c-code').value;
+        if (!code.trim()) return toast('コードを入れてください');
+        const owner = ctx.user.name || (ctx.user.email || '').split('@')[0] || '名前なし';
+        const r = await joinClass(uid, owner, code);
+        classForm = null;
+        toast(`「${r.name}」に参加しました`);
+        await loadClasses();
+        return render();
+      }
+      if (a === 'openClass' || a === 'backClass') {
+        const id = a === 'openClass' ? t.dataset.id : curClass.id;
+        curClass = await getClass(uid, id);
+        if (!curClass) return toast('クラスが見つかりません');
+        classPosts = posts.filter((p) => p.cid === id);
+        curPost = null;
+        screen = 'class';
+        return render();
+      }
+      if (a === 'copyCode') {
+        try {
+          await navigator.clipboard.writeText(curClass.code);
+          toast('コピーしました');
+        } catch {
+          toast('コード: ' + curClass.code);
+        }
+        return;
+      }
+      if (a === 'leaveClass' || a === 'delClass') {
+        if (!confirm(a === 'delClass' ? 'クラスを削除します。配信もすべて消えます。よろしいですか？' : 'このクラスを抜けますか？')) return;
+        if (a === 'delClass') await deleteClass(uid, curClass.id);
+        else await leaveClass(uid, curClass.id);
+        await loadClasses();
+        return back();
+      }
+      if (a === 'newPost') {
+        curPost = { title: '', type: '小テスト', subject: '', date: todayKey(), time: '', range: '', note: '' };
+        postBack = 'class';
+        screen = 'post';
+        return render();
+      }
+      if (a === 'editPost') {
+        curPost = clone(curPost);
+        screen = 'post';
+        return render();
+      }
+      if (a === 'savePost') {
+        sync();
+        if (!curPost.title) return toast('タイトルを入れてください');
+        const { cid, cname, ...data } = curPost;
+        await savePost(curClass.id, data);
+        await loadClasses();
+        classPosts = posts.filter((p) => p.cid === curClass.id);
+        curPost = null;
+        screen = 'class';
+        toast('配信しました');
+        return render();
+      }
+      if (a === 'viewPost') {
+        const cid = t.dataset.cid;
+        const p = posts.find((x) => x.id === t.dataset.id && x.cid === cid);
+        if (!p) return;
+        postBack = t.dataset.from === 'class' ? 'class' : 'list';
+        curClass = (await getClass(uid, cid)) || curClass;
+        curPost = p;
+        screen = 'postView';
+        return render();
+      }
+      if (a === 'delPost') {
+        if (!confirm('この配信を削除しますか？')) return;
+        await deletePost(curPost.cid || curClass.id, curPost.id);
+        await loadClasses();
+        classPosts = posts.filter((p) => p.cid === curClass.id);
+        curPost = null;
+        screen = postBack === 'class' ? 'class' : 'list';
+        return render();
+      }
+      if (a === 'postToExam') {
+        const p = curPost;
+        await persist({ title: p.title, kind: p.type, date: p.date, subjects: p.subject || p.range ? [{ name: p.subject || p.title, range: p.range || '' }] : [] });
+        toast('自分の記録に追加しました。点数タブで結果を残せます');
+        return;
+      }
+      if (a === 'postToTask') {
+        const p = curPost;
+        const rec = { title: p.title, subject: p.subject || '', due: p.date, done: false };
+        const id = await saveItem(uid, 'tasks', rec);
+        tasks.push({ ...rec, id });
+        toast('課題に追加しました');
+        return;
+      }
       if (a === 'newExam') {
         cur = { title: '', kind: '考査', date: todayKey(), subjects: [] };
         screen = 'form';
