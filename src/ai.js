@@ -105,6 +105,37 @@ ${text ? '補足テキスト:\n' + text : ''}
   };
 }
 
+/** 範囲表・時間割の写真から、試験の日程（教科ごとの日付と範囲）と、そのほかの予定を読み取る */
+export async function extractSchedule({ text, files }) {
+  if (!getModel()) {
+    await wait(800);
+    const t = new Date();
+    const f = (n) => ymd(new Date(t.getFullYear(), t.getMonth(), t.getDate() + n));
+    return {
+      title: 'デモ: 期末考査', kind: '考査',
+      subjects: [{ name: '国語', date: f(14), range: 'p.10〜45' }, { name: '数学', date: f(14), range: '第2章' }, { name: '英語', date: f(15), range: 'Lesson 3〜5' }],
+      others: [{ date: f(7), title: 'デモ: ワーク提出', type: '提出', time: '' }],
+    };
+  }
+  const y = new Date().getFullYear();
+  const j = await askJSON(`添付の画像・PDF・テキストは、学校の「考査・模試の日程表／試験範囲表」です。日程と範囲を読み取ってください。今年は ${y} 年です。
+${text ? '補足テキスト:\n' + text : ''}
+ルール:
+- 教科ごとに、試験の日付(YYYY-MM-DD。年が無ければ ${y} 年)と範囲を読み取る。日付が分からない教科は date を空文字にする
+- 試験名は title、種類は kind（"考査" "模試" "小テスト" のどれか）
+- 提出物の期限・行事・補講など、試験以外の日付つきのお知らせは others に入れる。type は "提出" "授業" "行事" "予定" のどれか
+- 読み取れないものを想像で作らない
+次のJSONだけを返してください:
+{"title": "", "kind": "考査", "subjects": [{"name": "教科", "date": "", "range": ""}], "others": [{"date": "", "title": "", "type": "提出", "time": ""}]}`, files);
+  const okD = (d) => /^\d{4}-\d{2}-\d{2}$/.test(d || '');
+  return {
+    title: String(j.title || ''),
+    kind: ['考査', '模試', '小テスト'].includes(j.kind) ? j.kind : '考査',
+    subjects: (j.subjects || []).filter((s) => s && s.name).map((s) => ({ name: String(s.name), date: okD(s.date) ? s.date : '', range: String(s.range || '') })),
+    others: (j.others || []).filter((o) => o && o.title && okD(o.date)).map((o) => ({ date: o.date, title: String(o.title), type: ['提出', '授業', '行事', '予定'].includes(o.type) ? o.type : '予定', time: /^\d{2}:\d{2}$/.test(o.time || '') ? o.time : '' })),
+  };
+}
+
 const ADVICE = '{"headline": "全体の見立てを1文で", "points": ["気づいた点（3〜5個、具体的に）"], "next": ["次にやること（3個以内、すぐ実行できる形で）"]}';
 
 /** 点数の推移をGeminiが分析する */
@@ -150,16 +181,26 @@ export async function makePlan({ tasks, exams, today, weekdayMin, holidayMin }) 
     await wait(700);
     const days = {};
     const start = new Date(today + 'T00:00');
+    const put = (d, it) => { if (d >= today) (days[d] ||= []).push(it); };
     for (const t of tasks) {
       const end = new Date(t.due + 'T00:00');
       const n = Math.max(1, Math.round((end - start) / 864e5));
       const per = Math.max(10, Math.round((t.minutes || 60) / n / 5) * 5);
-      for (let i = 0; i < n; i++) {
-        const d = ymd(new Date(start.getTime() + i * 864e5));
-        (days[d] ||= []).push({ title: t.title, minutes: per, kind: 'task' });
+      for (let i = 0; i < n; i++) put(ymd(new Date(start.getTime() + i * 864e5)), { title: t.title, minutes: per, kind: 'task' });
+    }
+    // 試験: 教科ごとに、試験日の14・7・3・1日前に「1周目・2周目・弱点・総復習」を入れる
+    const STEPS = [[14, '1周目', 40], [7, '2周目', 30], [3, '弱点つぶし', 30], [1, '総復習', 20]];
+    for (const e of exams) {
+      const subs = e.subjects?.length ? e.subjects : [{ name: e.title, range: '' }];
+      for (const s of subs) {
+        const day = new Date((s.date || e.date) + 'T00:00');
+        for (const [before, label, min] of STEPS) {
+          const d = ymd(new Date(day.getTime() - before * 864e5));
+          put(d < today && before > 1 ? today : d, { title: `${s.name} ${label}${s.range ? '（' + s.range + '）' : ''}｜${e.title}まであと${before}日`, minutes: min, kind: 'exam' });
+        }
       }
     }
-    return { days: Object.keys(days).sort().map((date) => ({ date, items: days[date] })), tips: 'デモ: 期限までの日数で均等に割った計画です。Firebaseを設定すると、Geminiが試験範囲や休日も考えて作ります。' };
+    return { days: Object.keys(days).sort().map((date) => ({ date, items: days[date] })), tips: 'デモ: 期限までの日数で均等に割った計画です。Firebaseを設定すると、Geminiが休日の時間も考えて作ります。' };
   }
   const j = await askJSON(`あなたは中高生の学習計画を立てるコーチです。今日は ${today} です。
 未完了の課題と、これからの考査・模試をもとに、今日から最後の期限までの日ごとの勉強計画を作ってください。
@@ -168,13 +209,11 @@ export async function makePlan({ tasks, exams, today, weekdayMin, holidayMin }) 
 ${tasks.map((t) => `- ${t.title}（${t.subject || '教科なし'}／期限 ${t.due}${t.minutes ? `／目安 ${t.minutes}分` : ''}）`).join('\n') || '（なし）'}
 
 # これからの試験
-${exams.map((e) => `- ${e.title}（${e.kind}／${e.date}）\n${e.subjects.map((s) => `   ${s.name}: ${s.range || '範囲未定'}`).join('\n')}`).join('\n') || '（なし）'}
+${exams.map((e) => `- ${e.title}（${e.kind}／${e.date}／あと${Math.round((new Date(e.date + 'T00:00') - new Date(today + 'T00:00')) / 864e5)}日）\n${(e.subjects || []).map((s) => `   ${s.name}${s.date ? '（試験日 ' + s.date + '）' : ''}: ${s.range || '範囲未定'}`).join('\n')}`).join('\n') || '（なし）'}
 
 # 条件
 - 1日に使える時間: 平日 ${weekdayMin}分、土日祝 ${holidayMin}分 を超えない
-- 課題は期限の前日までに終える。試験は直前に詰め込まず、範囲を分けて前から進める
-- 試験前日と当日朝は復習中心。余裕のある日は少なめにして休む日も作る
-- 計画は最大28日分まで。items は1日3〜5個以内、minutes は5分単位
+- 課題は期限の前日までに終える。試験は直前に詰め込まず、試験日から逆算して進める\n- 目安: 試験の2週間前から1周目（範囲を分けて前から）、1週間前に2周目、3日前に弱点つぶし、前日は総復習。試験が近い教科・範囲が広い教科を多めに\n- 教科ごとに試験日が違う場合は、その教科の試験日を基準にする。title には「あと◯日」を入れてもよい\n- 余裕のある日は少なめにして休む日も作る\n- 計画は最大42日分まで。items は1日3〜5個以内、minutes は5分単位
 - kind は課題なら "task"、試験勉強なら "exam"
 
 次のJSONだけを返してください:
