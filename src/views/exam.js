@@ -3,9 +3,9 @@ import { ICON } from '../ui.js';
 import { listItems, saveItem, deleteItem, createClass, joinClass, listMyClasses, getClass, listPosts, savePost, deletePost, leaveClass, deleteClass } from '../repo.js';
 import { EXAM_KINDS, EVENT_TYPES, POST_TYPES, colorOf, WD as WDAYS, ymd, parse, addDays, buildEvents, monthGrid, toICS, fmtDate as fmtD } from '../calendar.js';
 import { ACCEPT, readAll, fileChips } from '../files.js';
-import { extractRange, analyzeScores, analyzeReflection, makePlan } from '../ai.js';
+import { extractRange, extractSchedule, analyzeScores, analyzeReflection, makePlan } from '../ai.js';
 
-const SUBJECTS = ['国語', '数学', '英語', '理科', '理科1', '理科2', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
+const SUBJECTS = ['国語', '数学', '英語', '理科', '理科1','理科2','社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
 const COLORS = ['#e5584b', '#f09a00', '#2e9e6b', '#3b82f6', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -82,6 +82,7 @@ export function mount(root, ctx) {
   let curPost = null;
   let postBack = 'list';
   let classForm = null;
+  let scanRes = null;
   let showTaskForm = false;
   let selDay = null;
   const mins = lsGet('exam:mins', { wd: 90, hd: 180 });
@@ -175,9 +176,16 @@ export function mount(root, ctx) {
     const cell = (d) => {
       const list = by[d] || [];
       const types = [...new Set(list.map((e) => e.type))];
-      return `<button class="cd ${d.slice(0, 7) === mk ? '' : 'o'} ${d === today ? 'today' : ''} ${d === sel ? 'sel' : ''}" data-a="calDay" data-d="${d}"><span class="n">${Number(d.slice(8))}</span><span class="dots">${types.slice(0, 4).map((t) => `<i style="background:${colorOf(t)}"></i>`).join('')}</span>${list.length > 1 ? `<em>${list.length}</em>` : ''}</button>`;
+      return `<button class="cd ${d.slice(0, 7) === mk ? '' : 'o'} ${d === today ? 'today' : ''} ${d === sel ? 'sel' : ''}" data-a="calDay" data-d="${d}"><span class="n">${Number(d.slice(8))}</span><span class="dots">${types.slice(0, 4).map((t) => `<i style="background:${colorOf(t)}"></i>`).join('')}</span>${list.length > 1 ? `<em>${list.length}</em>` : ''}${pl[d] ? `<span class="sbar" title="勉強 ${pl[d].tot}分"><i style="width:${pl[d].tot ? Math.round((pl[d].done / pl[d].tot) * 100) : 0}%"></i></span>` : ''}</button>`;
     };
     const dayEvs = by[sel] || [];
+    const pl = {};
+    (plan?.days || []).forEach((d) => {
+      const tot = d.items.reduce((a, it) => a + (it.minutes || 0), 0);
+      const done = d.items.reduce((a, it, i) => a + (plan.done?.[d.date + '#' + i] ? it.minutes || 0 : 0), 0);
+      pl[d.date] = { tot, done };
+    });
+    const selPlan = (plan?.days || []).find((d) => d.date === sel);
     return `<div class="card calcard">
         <div class="cal-head"><button class="nav-b" data-a="mPrev" aria-label="前の月">${ICON.chevron}</button><b>${y}年${m + 1}月</b><button class="nav-b" data-a="mNext" aria-label="次の月">${ICON.chevron}</button><button class="chip" data-a="mToday">今日</button></div>
         <div class="cal-wd">${WDAYS.map((w, i) => `<span class="${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</span>`).join('')}</div>
@@ -185,6 +193,8 @@ export function mount(root, ctx) {
       </div>
       <div class="group-title">${fmtD(sel)}の予定</div>
       ${dayEvs.length ? dayEvs.map(evRow).join('') : '<p class="empty small">この日の予定はありません</p>'}
+      ${selPlan ? `<div class="group-title">勉強の計画　${pl[sel].done}／${pl[sel].tot}分</div><div class="plan-day mini">${selPlan.items.map((it, i) => { const k = sel + '#' + i; return `<label class="pd-item ${it.kind}"><span class="tick"><input type="checkbox" data-a="planDone" data-k="${k}" ${plan.done?.[k] ? 'checked' : ''} /><i></i></span><span class="t">${esc(it.title)}</span><small>${it.minutes}分</small></label>`; }).join('')}</div>` : ''}
+      <p class="footnote legend">${Object.keys(pl).length ? 'マスの下の線が勉強の計画です（塗りがおわった分）。' : '「課題」タブで勉強計画を作ると、ここに重なって出ます。'}</p>
       <button class="ghost wide" data-a="pick" data-d="${sel}">${ICON.plus}<span>この日に予定を追加</span></button>`;
   }
 
@@ -214,8 +224,35 @@ export function mount(root, ctx) {
   function pickScreen() {
     const btn = (t) => `<button class="pick" data-a="newOf" data-t="${t}" style="--kc:${colorOf(t)}"><i></i><span><b>${t}</b><small>${PICK_DESC[t]}</small></span></button>`;
     return `<button class="text-btn back" data-a="back">‹ 戻る</button><h2 class="large">なにを追加する？</h2><p class="sub">${fmtD(pickDate || todayKey())}</p>
+      <button class="pick scan-pick" data-a="openScan" style="--kc:var(--c)"><i></i><span><b>範囲表の写真から自動で入れる</b><small>日程表・範囲表を撮るだけ。AIが日付と範囲を読み取ります</small></span></button>
       <div class="group-title">点数や振り返りを残せるもの</div><div class="picks">${EXAM_KINDS.map(btn).join('')}</div>
       <div class="group-title">予定だけ入れるもの（くり返しもOK）</div><div class="picks">${EVENT_TYPES.map(btn).join('')}</div>`;
+  }
+
+  /* ---------------- 範囲表から自動登録 ---------------- */
+  function scanScreen() {
+    const r = scanRes;
+    const head = `<button class="text-btn back" data-a="back">‹ 戻る</button><h2 class="large">写真から予定を入れる</h2>`;
+    if (!r)
+      return `${head}<p class="sub">考査・模試の日程表や範囲表の写真・PDFを選ぶと、AIが日付と範囲を読み取って、カレンダーに入れる内容を作ります。入れる前に確認できます。</p>
+      <div class="card attach">
+        <p class="aihint">${ICON.sparkle}<span>写真・PDF・テキストに対応しています</span></p>
+        <label class="filebtn">${ICON.plus}<span>ファイルを選ぶ／写真をとる</span><input type="file" id="f-file" accept="${ACCEPT}" multiple hidden></label>
+        <div class="fchips" id="fchips">${fileChips(files)}</div>
+        <textarea id="f-text" rows="3" placeholder="文字で貼り付けてもOK"></textarea>
+        <button class="primary big" data-a="runScan">${ICON.sparkle}<span>読み取る</span></button>
+      </div>`;
+    const ex = r.subjects.length
+      ? `<div class="group-title">試験</div><div class="card scan-card"><label class="row field"><span>名前</span><input id="s-title" value="${esc(r.title)}" placeholder="例）2学期期末考査" /></label>
+        <label class="row field"><span>種類</span><select id="s-kind">${EXAM_KINDS.map((k) => `<option ${k === r.kind ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+        ${r.subjects.map((s, i) => `<label class="scan-row"><input type="checkbox" class="s-on" data-i="${i}" ${s.off ? '' : 'checked'} /><b>${esc(s.name)}</b><span>${s.date ? fmtD(s.date) : '日付なし'}</span><small>${esc(s.range || '範囲なし')}</small></label>`).join('')}</div>`
+      : '';
+    const ot = r.others.length
+      ? `<div class="group-title">そのほかの予定</div><div class="card scan-card">${r.others.map((o, i) => `<label class="scan-row"><input type="checkbox" class="o-on" data-i="${i}" ${o.off ? '' : 'checked'} /><b>${esc(o.title)}</b><span>${fmtD(o.date)}</span><small>${esc(o.type)}</small></label>`).join('')}</div>`
+      : '';
+    return `${head}<p class="sub">読み取れた内容です。いらないものはチェックを外してください。</p>${ex}${ot}
+      <button class="primary big" data-a="regScan"><span>カレンダーに入れる</span></button>
+      <button class="ghost wide" data-a="openScan">${ICON.pen}<span>やり直す</span></button>`;
   }
 
   function eventForm() {
@@ -310,7 +347,7 @@ export function mount(root, ctx) {
         <button class="ghost" data-a="readRange">${ICON.sparkle}<span>AIで読み取る</span></button>
       </div>
       <div class="group">${(e.subjects || [])
-        .map((s, i) => `<div class="row subj"><input class="s-name" data-i="${i}" value="${esc(s.name)}" placeholder="教科" /><input class="s-range" data-i="${i}" value="${esc(s.range)}" placeholder="範囲（例: p.10〜45）" /><button class="x" data-a="rmSubj" data-i="${i}" aria-label="削除">×</button></div>`)
+        .map((s, i) => `<div class="row subj"><input class="s-name" data-i="${i}" value="${esc(s.name)}" placeholder="教科" /><input class="s-range" data-i="${i}" value="${esc(s.range)}" placeholder="範囲（例: p.10〜45）" /><input type="date" class="s-date" data-i="${i}" value="${esc(s.date || '')}" aria-label="この教科の試験日" /><button class="x" data-a="rmSubj" data-i="${i}" aria-label="削除">×</button></div>`)
         .join('') || '<div class="row"><small>下のボタンで教科を追加できます</small></div>'}</div>
       ${subjChips()}
       <button class="primary big" data-a="saveExam"><span>保存する</span></button>
@@ -419,6 +456,7 @@ export function mount(root, ctx) {
     else if (screen === 'score') body = scoreForm();
     else if (screen === 'reflect') body = reflectForm();
     else if (screen === 'pick') body = pickScreen();
+    else if (screen === 'scan') body = scanScreen();
     else if (screen === 'event') body = eventForm();
     else if (screen === 'class') body = classScreen();
     else if (screen === 'post') body = postForm();
@@ -436,6 +474,7 @@ export function mount(root, ctx) {
       cur.date = q('#f-date')?.value || cur.date;
       root.querySelectorAll('.s-name').forEach((el) => (cur.subjects[el.dataset.i].name = el.value.trim()));
       root.querySelectorAll('.s-range').forEach((el) => (cur.subjects[el.dataset.i].range = el.value.trim()));
+      root.querySelectorAll('.s-date').forEach((el) => (cur.subjects[el.dataset.i].date = el.value));
     } else if (screen === 'event' && curEvent) {
       const g = (id, k) => (curEvent[k] = q(id)?.value ?? curEvent[k]);
       curEvent.title = q('#e-title')?.value.trim() ?? curEvent.title;
@@ -530,6 +569,54 @@ export function mount(root, ctx) {
         pickDate = t.dataset.d || selDay || todayKey();
         screen = 'pick';
         return render();
+      }
+      if (a === 'openScan') {
+        scanRes = null;
+        files = [];
+        screen = 'scan';
+        return render();
+      }
+      if (a === 'runScan') {
+        const text = root.querySelector('#f-text').value.trim();
+        if (!text && !files.length) return toast('写真・PDFを選ぶか、文字を貼り付けてください');
+        busy(t, true, '読み取り中…');
+        try {
+          const r = await extractSchedule({ text, files });
+          if (!alive) return;
+          if (!r.subjects.length && !r.others.length) throw new Error('日程を読み取れませんでした。写真を撮り直してみてください');
+          scanRes = r;
+          files = [];
+          return render();
+        } catch (err) {
+          toast(err.message || '読み取れませんでした');
+          busy(t, false, '読み取る');
+          return;
+        }
+      }
+      if (a === 'regScan') {
+        const r = scanRes;
+        root.querySelectorAll('.s-on').forEach((el) => (r.subjects[el.dataset.i].off = !el.checked));
+        root.querySelectorAll('.o-on').forEach((el) => (r.others[el.dataset.i].off = !el.checked));
+        const subs = r.subjects.filter((x) => !x.off);
+        const others = r.others.filter((x) => !x.off);
+        let n = 0;
+        if (subs.length) {
+          const title = root.querySelector('#s-title')?.value.trim() || r.title || '試験';
+          const kind = root.querySelector('#s-kind')?.value || r.kind;
+          const ds = subs.map((x) => x.date).filter(Boolean).sort();
+          const date = ds[0] || todayKey();
+          await persist({ title, kind, date, subjects: subs.map((x) => ({ name: x.name, range: x.range, date: x.date || '' })) });
+          n += subs.length;
+        }
+        for (const o of others) {
+          const rec = { title: o.title, type: o.type, date: o.date, time: o.time || '', repeat: 'none', until: '', note: '' };
+          const id = await saveItem(uid, 'events', rec);
+          events.push({ ...rec, id });
+          n++;
+        }
+        scanRes = null;
+        toast(`${n}件をカレンダーに入れました`);
+        return back();
       }
       if (a === 'newOf') {
         const kind = t.dataset.t;
@@ -864,6 +951,7 @@ export function mount(root, ctx) {
       plan.done ||= {};
       plan.done[el.dataset.k] = el.checked;
       await saveItem(uid, 'plans', plan);
+      if (screen === 'list' && tab === 'cal') render();
     } else if (el.id === 'm-wd' || el.id === 'm-hd') {
       mins.wd = Number(root.querySelector('#m-wd').value);
       mins.hd = Number(root.querySelector('#m-hd').value);
