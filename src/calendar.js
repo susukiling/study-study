@@ -54,8 +54,16 @@ export function occurrences(ev, from, to) {
 export function buildEvents({ exams = [], events = [], tasks = [], posts = [], from, to }) {
   const out = [];
   for (const e of exams) {
-    if (e.date >= from && e.date <= to)
-      out.push({ src: 'exam', id: e.id, date: e.date, type: e.kind || '考査', title: e.title, time: '', sub: (e.subjects || []).map((s) => s.name).filter(Boolean).join('・') });
+    const subs = (e.subjects || []).filter((s) => s.name);
+    const dated = subs.filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s.date || ''));
+    if (dated.length) {
+      // 教科ごとに試験日が違う（時間割つきの範囲表）→ 日ごとに分けて出す
+      const byDay = {};
+      for (const s of subs) (byDay[/^\d{4}-\d{2}-\d{2}$/.test(s.date || '') ? s.date : e.date] ||= []).push(s);
+      for (const [d, list] of Object.entries(byDay))
+        if (d >= from && d <= to) out.push({ src: 'exam', id: e.id, date: d, type: e.kind || '考査', title: e.title, time: '', sub: list.map((s) => s.name).join('・') });
+    } else if (e.date >= from && e.date <= to)
+      out.push({ src: 'exam', id: e.id, date: e.date, type: e.kind || '考査', title: e.title, time: '', sub: subs.map((s) => s.name).join('・') });
   }
   for (const ev of events) {
     for (const d of occurrences(ev, from, to))
