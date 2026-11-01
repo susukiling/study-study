@@ -1,11 +1,11 @@
 import { esc, toast, todayKey, lsGet, lsSet } from '../dom.js';
 import { ICON } from '../ui.js';
-import { listItems, saveItem, deleteItem, createClass, joinClass, listMyClasses, getClass, listPosts, savePost, deletePost, leaveClass, deleteClass } from '../repo.js';
+import { peekItems, listItems, saveItem, deleteItem, createClass, joinClass, listMyClasses, getClass, listPosts, savePost, deletePost, leaveClass, deleteClass } from '../repo.js';
 import { EXAM_KINDS, EVENT_TYPES, POST_TYPES, colorOf, WD as WDAYS, ymd, parse, addDays, buildEvents, monthGrid, toICS, fmtDate as fmtD } from '../calendar.js';
 import { ACCEPT, readAll, fileChips } from '../files.js';
 import { extractRange, extractSchedule, analyzeScores, analyzeReflection, makePlan } from '../ai.js';
 
-const SUBJECTS = ['国語', '数学', '英語', '理科',  '理科1',  '理科2', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
+const SUBJECTS = ['国語', '数学', '英語', '理科', '理科1', '理科2', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
 const COLORS = ['#e5584b', '#f09a00', '#2e9e6b', '#3b82f6', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -96,6 +96,20 @@ export function mount(root, ctx) {
   const clone = (o) => JSON.parse(JSON.stringify(o));
 
   async function load() {
+    // 前回の内容を先に出して、すぐ使えるようにする（あとで最新に入れ替わる）
+    const pk = (c) => peekItems(uid, c);
+    if (pk('exams') || pk('events')) {
+      exams = pk('exams') || [];
+      tasks = pk('tasks') || [];
+      events = pk('events') || [];
+      const pp = pk('plans') || [];
+      plan = pp.find((x) => x.id === 'current') || null;
+      scoreAI = pp.find((x) => x.id === 'scoreAI') || null;
+      classes = pk('myClasses') || [];
+      posts = pk('classPosts') || [];
+      render();
+    }
+    const clsP = loadClasses(); // クラスも同時に読み込む
     try {
       const [e, t, p, ev] = await Promise.all([listItems(uid, 'exams'), listItems(uid, 'tasks'), listItems(uid, 'plans'), listItems(uid, 'events')]);
       exams = e;
@@ -108,22 +122,26 @@ export function mount(root, ctx) {
       toast('データを読み込めませんでした');
     }
     if (alive) render();
-    await loadClasses();
+    await clsP;
   }
 
   /** 参加しているクラスと、その配信を読み込む（読めなかったクラスは飛ばす） */
   async function loadClasses() {
     try {
       classes = await listMyClasses(uid);
-      const all = [];
-      for (const c of classes) {
-        try {
-          (await listPosts(c.id)).forEach((p) => all.push({ ...p, cid: c.id, cname: c.name }));
-        } catch (err) {
-          console.warn(err);
-        }
+      const lists = await Promise.all(
+        classes.map((c) =>
+          listPosts(c.id)
+            .then((l) => l.map((p) => ({ ...p, cid: c.id, cname: c.name })))
+            .catch((err) => (console.warn(err), [])),
+        ),
+      );
+      posts = lists.flat();
+      try {
+        lsSet(`cache:${uid}:classPosts`, posts);
+      } catch {
+        /* 無視 */
       }
-      posts = all;
     } catch (err) {
       console.warn(err);
     }
