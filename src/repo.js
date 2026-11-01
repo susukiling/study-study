@@ -14,7 +14,25 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { hasFirebase, db } from './firebase.js';
-import { lsGet, lsSet } from './dom.js';
+import { lsGet, lsSet, toast } from './dom.js';
+
+/* ---- 速くするための端末キャッシュ ----
+   読み込み: 前回の内容を先に出して、あとから最新に入れ替える（peek → list）
+   書き込み: 端末のキャッシュに先に反映して、サーバーへの保存は裏で行う */
+const cacheKey = (uid, col) => `cache:${uid}:${col}`;
+export const peekItems = (uid, col) => (hasFirebase ? lsGet(cacheKey(uid, col), null) : lsGet(`${uid}:${col}`, []));
+const putCache = (uid, col, list) => {
+  try {
+    lsSet(cacheKey(uid, col), list);
+  } catch {
+    /* 容量いっぱいなどは無視 */
+  }
+};
+const bg = (p) =>
+  p.catch((err) => {
+    console.warn(err);
+    toast('保存がサーバーに届きませんでした。通信を確認してください');
+  });
 
 /** 1日分の学習記録に加算: delta = { seconds, correct, solved: { appId: n } } */
 export async function addDaily(uid, date, delta) {
@@ -83,7 +101,9 @@ export async function deleteDeck(uid, id) {
 export async function listItems(uid, col) {
   if (!hasFirebase) return lsGet(`${uid}:${col}`, []);
   const snap = await getDocs(collection(db, 'users', uid, col));
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  putCache(uid, col, list);
+  return list;
 }
 export async function saveItem(uid, col, item) {
   const id = item.id || 'i' + Date.now() + Math.random().toString(36).slice(2, 6);
@@ -97,7 +117,12 @@ export async function saveItem(uid, col, item) {
     lsSet(`${uid}:${col}`, all);
     return id;
   }
-  await setDoc(doc(db, 'users', uid, col, id), data);
+  const cached = peekItems(uid, col) || [];
+  const i = cached.findIndex((x) => x.id === id);
+  if (i >= 0) cached[i] = { id, ...data };
+  else cached.push({ id, ...data });
+  putCache(uid, col, cached);
+  bg(setDoc(doc(db, 'users', uid, col, id), data)); // 待たずに先へ進む（裏で保存）
   return id;
 }
 export async function deleteItem(uid, col, id) {
@@ -105,7 +130,8 @@ export async function deleteItem(uid, col, id) {
     lsSet(`${uid}:${col}`, lsGet(`${uid}:${col}`, []).filter((x) => x.id !== id));
     return;
   }
-  await deleteDoc(doc(db, 'users', uid, col, id));
+  putCache(uid, col, (peekItems(uid, col) || []).filter((x) => x.id !== id));
+  bg(deleteDoc(doc(db, 'users', uid, col, id)));
 }
 
 /* ---- クラス（Classroomのように、コードで参加して予定を配信する） ----
@@ -172,16 +198,20 @@ export async function listMyClasses(uid) {
       .map((c) => ({ id: c.id, name: c.name, role: c.ownerUid === uid ? 'owner' : 'member' }));
   }
   const snap = await getDocs(collection(db, 'users', uid, 'classes'));
-  const out = [];
-  for (const d of snap.docs) {
-    try {
-      const c = await getDoc(doc(db, 'classes', d.id));
-      if (c.exists()) out.push({ id: d.id, name: c.data().name, role: c.data().ownerUid === uid ? 'owner' : 'member' });
-      else await deleteDoc(d.ref); // 削除されたクラスは一覧から外す
-    } catch {
-      await deleteDoc(d.ref).catch(() => {});
-    }
-  }
+  const res = await Promise.all(
+    snap.docs.map(async (d) => {
+      try {
+        const c = await getDoc(doc(db, 'classes', d.id));
+        if (c.exists()) return { id: d.id, name: c.data().name, role: c.data().ownerUid === uid ? 'owner' : 'member' };
+        deleteDoc(d.ref).catch(() => {}); // 削除されたクラスは一覧から外す
+      } catch {
+        deleteDoc(d.ref).catch(() => {});
+      }
+      return null;
+    }),
+  );
+  const out = res.filter(Boolean);
+  putCache(uid, 'myClasses', out);
   return out;
 }
 
