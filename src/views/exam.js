@@ -5,7 +5,7 @@ import { EXAM_KINDS, EVENT_TYPES, POST_TYPES, colorOf, WD as WDAYS, ymd, parse, 
 import { ACCEPT, readAll, fileChips } from '../files.js';
 import { extractRange, extractSchedule, analyzeScores, analyzeReflection, makePlan } from '../ai.js';
 
-const SUBJECTS = ['国語', '数学', '英語', '理科', '理科1', '理科2', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
+const SUBJECTS = ['国語', '数学', '英語', '理科',  '理科1',  '理科2', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
 const COLORS = ['#e5584b', '#f09a00', '#2e9e6b', '#3b82f6', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -301,11 +301,25 @@ export function mount(root, ctx) {
       <button class="danger" data-a="${owner ? 'delClass' : 'leaveClass'}">${ICON.trash}<span>${owner ? 'このクラスを削除' : 'このクラスを抜ける'}</span></button>`;
   }
 
+  function mkPost(e) {
+    const post = { title: e.title, type: POST_TYPES.includes(e.type) ? e.type : e.type === '課題' ? '提出' : 'お知らせ', subject: '', date: e.date, time: e.time || '', range: '', note: e.src === 'event' ? e.sub || '' : '' };
+    if (e.src === 'exam') {
+      const ex = exams.find((x) => x.id === e.id);
+      const subs = (ex?.subjects || []).filter((s) => s.name && (!s.date || s.date === e.date || !(ex.subjects || []).some((q) => q.date)));
+      post.range = subs.map((s) => `${s.name}${s.range ? ': ' + s.range : ''}`).join('\n');
+      if (subs.length === 1) post.subject = subs[0].name;
+    } else if (e.src === 'task') {
+      post.subject = tasks.find((x) => x.id === e.id)?.subject || '';
+    }
+    return post;
+  }
+
   function mineScreen() {
     const t = todayKey();
     const items = buildEvents({ exams, events, tasks, posts: [], from: t, to: addDays(t, 120) });
-    return `<button class="text-btn back" data-a="backClass">‹ 戻る</button><h2 class="large">どれを配信する？</h2><p class="sub">${esc(curClass.name)}　自分のカレンダーの予定です。選ぶと内容を確認できます。</p>
-      ${items.length ? items.map((e, i) => { const x = parse(e.date); return `<button class="ev" data-a="mineSel" data-i="${i}"><span class="tm">${x.getMonth() + 1}/${x.getDate()}<br>${WDAYS[x.getDay()]}</span><span class="bx" style="--kc:${colorOf(e.type)}"><b>${esc(e.title)}</b><small>${esc(e.type)}${e.time ? ' ' + esc(e.time) : ''}${e.sub ? '　' + esc(e.sub) : ''}</small></span></button>`; }).join('') : '<p class="empty small">配信できる予定がありません</p>'}`;
+    return `<button class="text-btn back" data-a="backClass">‹ 戻る</button><h2 class="large">どれを配信する？</h2><p class="sub">${esc(curClass.name)}　自分のカレンダーの予定です。いくつでも選べます。</p>
+      ${items.length ? items.map((e, i) => { const x = parse(e.date); return `<button class="ev mine" data-a="mineTog" data-i="${i}"><span class="chk"></span><span class="tm">${x.getMonth() + 1}/${x.getDate()}<br>${WDAYS[x.getDay()]}</span><span class="bx" style="--kc:${colorOf(e.type)}"><b>${esc(e.title)}</b><small>${esc(e.type)}${e.time ? ' ' + esc(e.time) : ''}${e.sub ? '　' + esc(e.sub) : ''}</small></span></button>`; }).join('') : '<p class="empty small">配信できる予定がありません</p>'}
+      <div class="mine-bar"><button class="primary big" data-a="mineGo" disabled><span>選んで配信</span></button></div>`;
   }
 
   function postForm() {
@@ -736,21 +750,31 @@ export function mount(root, ctx) {
         screen = 'mine';
         return render();
       }
-      if (a === 'mineSel') {
+      if (a === 'mineTog') {
+        t.classList.toggle('on');
+        const n = root.querySelectorAll('.ev.mine.on').length;
+        const go = root.querySelector('[data-a=mineGo]');
+        go.disabled = !n;
+        go.querySelector('span').textContent = n ? (n === 1 ? '内容を確認して配信' : `${n}件をまとめて配信`) : '選んで配信';
+        return;
+      }
+      if (a === 'mineGo') {
         const t0 = todayKey();
-        const e = buildEvents({ exams, events, tasks, posts: [], from: t0, to: addDays(t0, 120) })[Number(t.dataset.i)];
-        const post = { title: e.title, type: POST_TYPES.includes(e.type) ? e.type : e.type === '課題' ? '提出' : 'お知らせ', subject: '', date: e.date, time: e.time || '', range: '', note: e.src === 'event' ? e.sub || '' : '' };
-        if (e.src === 'exam') {
-          const ex = exams.find((x) => x.id === e.id);
-          const subs = (ex?.subjects || []).filter((s) => s.name && (!s.date || s.date === e.date || !(ex.subjects || []).some((q) => q.date)));
-          post.range = subs.map((s) => `${s.name}${s.range ? ': ' + s.range : ''}`).join('\n');
-          if (subs.length === 1) post.subject = subs[0].name;
-        } else if (e.src === 'task') {
-          post.subject = tasks.find((x) => x.id === e.id)?.subject || '';
+        const all = buildEvents({ exams, events, tasks, posts: [], from: t0, to: addDays(t0, 120) });
+        const chosen = [...root.querySelectorAll('.ev.mine.on')].map((el) => mkPost(all[Number(el.dataset.i)]));
+        if (!chosen.length) return;
+        if (chosen.length === 1) {
+          curPost = chosen[0];
+          postBack = 'class';
+          screen = 'post';
+          return render();
         }
-        curPost = post;
-        postBack = 'class';
-        screen = 'post';
+        busy(t, true, '配信しています…');
+        for (const p of chosen) await savePost(curClass.id, p);
+        await loadClasses();
+        classPosts = posts.filter((p) => p.cid === curClass.id);
+        screen = 'class';
+        toast(`${chosen.length}件を配信しました`);
         return render();
       }
       if (a === 'editPost') {
