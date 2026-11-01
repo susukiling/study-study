@@ -5,7 +5,7 @@ import { EXAM_KINDS, EVENT_TYPES, POST_TYPES, colorOf, WD as WDAYS, ymd, parse, 
 import { ACCEPT, readAll, fileChips } from '../files.js';
 import { extractRange, extractSchedule, analyzeScores, analyzeReflection, makePlan } from '../ai.js';
 
-const SUBJECTS = ['国語', '数学', '英語', '理科', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
+const SUBJECTS = ['国語', '数学', '英語', '理科', '理科1', '理科2', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
 const COLORS = ['#e5584b', '#f09a00', '#2e9e6b', '#3b82f6', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
