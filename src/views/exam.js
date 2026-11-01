@@ -5,7 +5,7 @@ import { EXAM_KINDS, EVENT_TYPES, POST_TYPES, colorOf, WD as WDAYS, ymd, parse, 
 import { ACCEPT, readAll, fileChips } from '../files.js';
 import { extractRange, extractSchedule, analyzeScores, analyzeReflection, makePlan } from '../ai.js';
 
-const SUBJECTS = ['国語', '数学', '英語', '理科', '理科1','理科2','社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
+const SUBJECTS = ['国語', '数学', '英語', '理科', '社会', '物理', '化学', '生物', '歴史', '地理', '公民', '情報'];
 const COLORS = ['#e5584b', '#f09a00', '#2e9e6b', '#3b82f6', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b'];
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -294,11 +294,18 @@ export function mount(root, ctx) {
     return `<button class="text-btn back" data-a="back">‹ 戻る</button>
       <h2 class="large">${esc(c.name)}</h2><p class="sub">${owner ? '作成者' : '参加中'}　・　${esc(c.ownerName || '')}</p>
       ${owner ? `<div class="code-box"><small>参加コード（友達に教えてね）</small><b>${esc(c.code)}</b><button class="ghost" data-a="copyCode"><span>コピー</span></button></div>` : ''}
-      ${owner ? `<button class="primary big" data-a="newPost">${ICON.plus}<span>配信する</span></button>` : ''}
+      ${owner ? `<button class="primary big" data-a="newPost">${ICON.plus}<span>配信する</span></button><button class="ghost wide" data-a="fromMine">${ICON.exam}<span>自分のカレンダーから選んで配信</span></button>` : ''}
       <div class="group-title">配信 (${list.length})</div>
       ${list.length ? list.map((p) => `<button class="ev ${p.date < today ? 'past' : ''}" data-a="viewPost" data-id="${esc(p.id)}" data-cid="${esc(c.id)}" data-from="class"><span class="tm">${fmtD(p.date).replace('（', '<br>').replace('）', '')}</span><span class="bx" style="--kc:${colorOf(p.type)}"><b>${esc(p.title)}</b><small>${esc(p.type)}${p.time ? ' ' + esc(p.time) : ''}${p.subject ? '　' + esc(p.subject) : ''}</small></span></button>`).join('') : '<p class="empty small">まだ配信はありません</p>'}
       ${owner && c.members?.length ? `<div class="group-title">参加者 (${c.members.length})</div><div class="card members">${c.members.map((m) => `<span class="fchip">${esc(m.name || '名前なし')}</span>`).join('')}</div>` : ''}
       <button class="danger" data-a="${owner ? 'delClass' : 'leaveClass'}">${ICON.trash}<span>${owner ? 'このクラスを削除' : 'このクラスを抜ける'}</span></button>`;
+  }
+
+  function mineScreen() {
+    const t = todayKey();
+    const items = buildEvents({ exams, events, tasks, posts: [], from: t, to: addDays(t, 120) });
+    return `<button class="text-btn back" data-a="backClass">‹ 戻る</button><h2 class="large">どれを配信する？</h2><p class="sub">${esc(curClass.name)}　自分のカレンダーの予定です。選ぶと内容を確認できます。</p>
+      ${items.length ? items.map((e, i) => { const x = parse(e.date); return `<button class="ev" data-a="mineSel" data-i="${i}"><span class="tm">${x.getMonth() + 1}/${x.getDate()}<br>${WDAYS[x.getDay()]}</span><span class="bx" style="--kc:${colorOf(e.type)}"><b>${esc(e.title)}</b><small>${esc(e.type)}${e.time ? ' ' + esc(e.time) : ''}${e.sub ? '　' + esc(e.sub) : ''}</small></span></button>`; }).join('') : '<p class="empty small">配信できる予定がありません</p>'}`;
   }
 
   function postForm() {
@@ -457,6 +464,7 @@ export function mount(root, ctx) {
     else if (screen === 'reflect') body = reflectForm();
     else if (screen === 'pick') body = pickScreen();
     else if (screen === 'scan') body = scanScreen();
+    else if (screen === 'mine') body = mineScreen();
     else if (screen === 'event') body = eventForm();
     else if (screen === 'class') body = classScreen();
     else if (screen === 'post') body = postForm();
@@ -720,6 +728,27 @@ export function mount(root, ctx) {
       }
       if (a === 'newPost') {
         curPost = { title: '', type: '小テスト', subject: '', date: todayKey(), time: '', range: '', note: '' };
+        postBack = 'class';
+        screen = 'post';
+        return render();
+      }
+      if (a === 'fromMine') {
+        screen = 'mine';
+        return render();
+      }
+      if (a === 'mineSel') {
+        const t0 = todayKey();
+        const e = buildEvents({ exams, events, tasks, posts: [], from: t0, to: addDays(t0, 120) })[Number(t.dataset.i)];
+        const post = { title: e.title, type: POST_TYPES.includes(e.type) ? e.type : e.type === '課題' ? '提出' : 'お知らせ', subject: '', date: e.date, time: e.time || '', range: '', note: e.src === 'event' ? e.sub || '' : '' };
+        if (e.src === 'exam') {
+          const ex = exams.find((x) => x.id === e.id);
+          const subs = (ex?.subjects || []).filter((s) => s.name && (!s.date || s.date === e.date || !(ex.subjects || []).some((q) => q.date)));
+          post.range = subs.map((s) => `${s.name}${s.range ? ': ' + s.range : ''}`).join('\n');
+          if (subs.length === 1) post.subject = subs[0].name;
+        } else if (e.src === 'task') {
+          post.subject = tasks.find((x) => x.id === e.id)?.subject || '';
+        }
+        curPost = post;
         postBack = 'class';
         screen = 'post';
         return render();
