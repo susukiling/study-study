@@ -482,3 +482,8 @@ body[data-mode='dark'] .choice .n { color: var(--ink); }
 .scan-row small { grid-column: 2 / 4; color: var(--sub); font-size: 12px; }
 .row.subj { flex-wrap: wrap; }
 .row.subj .s-date { flex: 1 1 100%; order: 5; font-size: 13px; color: var(--ink2); padding-left: 0; }
+.ev.mine { align-items: stretch; }
+.ev.mine .chk { width: 22px; height: 22px; border-radius: 50%; margin: 12px 8px 0 0; flex: none; box-shadow: inset 0 0 0 2px var(--line); }
+.ev.mine.on .chk { background: var(--c) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 12.500l4 4 8-9' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/18px no-repeat; box-shadow: none; }
+.ev.mine.on .bx { box-shadow: inset 5px 0 0 var(--kc), 0 0 0 2px var(--c); }
+.mine-bar { position: sticky; bottom: calc(var(--bar-h, 70px) + 24px); padding-top: 10px; }
