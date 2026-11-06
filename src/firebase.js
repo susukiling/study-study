@@ -16,7 +16,7 @@ const cfg = {
 
 /** App Check 用の reCAPTCHA v3「サイトキー」。ここに貼り付ける（サイトキーは公開されても安全なもの）。
  *  空のままなら App Check は使わない */
-const RECAPTCHA_SITE_KEY = '';
+const RECAPTCHA_SITE_KEY = '6LeX_wAuAAAAAHgjHQH50u9eWm92LRZAmuYRTDXv';
 
 /** .env が未設定ならデモモード（端末内保存・AIはダミー） */
 export const hasFirebase = Boolean(cfg.apiKey && cfg.projectId);
