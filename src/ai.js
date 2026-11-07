@@ -1,5 +1,22 @@
 import { hasFirebase, getModel } from './firebase.js';
 
+/** 混雑(503)・回数制限(429)・通信エラーのときは、少し待って再試行し、だめなら別のモデルで試す */
+async function gen(parts) {
+  const tries = [undefined, undefined, 'gemini-3.6-flash'];
+  let last;
+  for (let i = 0; i < tries.length; i++) {
+    try {
+      return await getModel(tries[i]).generateContent(parts);
+    } catch (err) {
+      last = err;
+      const m = String(err?.message || err);
+      if (!/503|429|500|Load failed|Deadline|overloaded|unavailable|fetch/i.test(m)) throw err;
+      await new Promise((r) => setTimeout(r, 1200 * (i + 1)));
+    }
+  }
+  throw last;
+}
+
 function parse(text) {
   const t = String(text)
     .trim()
@@ -19,7 +36,7 @@ export async function gradeKanji(dataUrl, kanji, meaning) {
 多少のバランスの崩れや線のはみ出しは許容し、別の字に見える・パーツが足りない/多い場合は不正解にしてください。
 次のJSONだけを返してください:
 {"correct": true または false, "score": 0〜100の整数, "comment": "日本語で40文字以内の具体的なコメント"}`;
-  const res = await model.generateContent([prompt, { inlineData: { mimeType: 'image/png', data: dataUrl.split(',')[1] } }]);
+  const res = await gen([prompt, { inlineData: { mimeType: 'image/png', data: dataUrl.split(',')[1] } }]);
   const j = parse(res.response.text());
   return { correct: !!j.correct, score: Number(j.score) || 0, comment: String(j.comment || '') };
 }
@@ -34,8 +51,7 @@ function build(prompt, files = []) {
   return [prompt + extra, ...parts];
 }
 async function askJSON(prompt, files) {
-  const model = getModel();
-  const res = await model.generateContent(build(prompt, files));
+  const res = await gen(build(prompt, files));
   return parse(res.response.text());
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
