@@ -41,11 +41,11 @@ if (hasFirebase) {
 }
 
 /** Firebase AI Logic（Gemini）。JSONで返すよう設定 */
-export function getModel() {
+export function getModel(name) {
   if (!hasFirebase) return null;
   ai ||= getAI(app, { backend: new GoogleAIBackend() });
   return getGenerativeModel(ai, {
-    model: env.VITE_GEMINI_MODEL || 'gemini-3.8-flash',
+    model: name || env.VITE_GEMINI_MODEL || 'gemini-3.6-flash',
     generationConfig: { responseMimeType: 'application/json' },
   });
 }
